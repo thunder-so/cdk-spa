@@ -50,9 +50,10 @@ export class HostingConstruct extends Construct {
     public originAccessControl: CfnOriginAccessControl|undefined;
 
     /**
-     * The CloudFront Edge Function
+     * The CloudFront Edge Functions
      */
     private cloudFrontFunction: CloudFrontFunction;
+    private cloudFrontURLRewrite: CloudFrontFunction;
     
 
     constructor(scope: Construct, id: string, props: HostingProps) {
@@ -62,10 +63,12 @@ export class HostingConstruct extends Construct {
 
       this.createHostingBucket(props);
 
+      this.cloudFrontURLRewrite = this.createCloudFrontURLRewrite(props);
+
       if (props.edgeFunctionFilePath) {
         this.cloudFrontFunction = this.createCloudFrontFunction(props);
       }
-      
+
       this.createCloudfrontDistribution(props);
 
       if(props.domain && props.globalCertificateArn && props.hostedZoneId) {
@@ -87,6 +90,11 @@ export class HostingConstruct extends Construct {
       });
     }
 
+    /**
+     * Create a CloudFront Function from edgeFunctionFilePath
+     * @param props HostingProps
+     * @returns cloudfront function
+     */
     private createCloudFrontFunction(props: HostingProps): CloudFrontFunction {
       const cloudFrontFunctionCode = fs.readFileSync(props.edgeFunctionFilePath as string, "utf8");
 
@@ -96,6 +104,38 @@ export class HostingConstruct extends Construct {
       });
 
       return cloudFrontFunction;
+    }
+    
+    /**
+     * Create a CloudFront Function for SPA URL rewrite
+     * @param props HostingProps
+     * @returns cloudfront function
+     */
+    private createCloudFrontURLRewrite(props: HostingProps): CloudFrontFunction {
+      const functionCode = `
+          function handler(event) {
+              var request = event.request;
+              var uri = request.uri;
+              
+              // Check whether the URI is missing a file name.
+              if (uri.endsWith('/')) {
+                  request.uri += 'index.html';
+              } 
+              // Check whether the URI is missing a file extension.
+              else if (!uri.includes('.')) {
+                  request.uri += '/index.html';
+              }
+
+              return request;
+          }
+       `;
+
+       const URLRewriteFunction = new CloudFrontFunction(this, 'URLRewriteFunction', {
+        code: CloudFrontFunctionCode.fromInline(functionCode),
+        comment: `CloudFront Function: for SPA URL rewrites`,
+      });
+
+      return URLRewriteFunction;
     }
 
     /**
@@ -232,12 +272,16 @@ export class HostingConstruct extends Construct {
           cachePolicy: defaultCachePolicy,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          ...(this.cloudFrontFunction ? {
-            functionAssociations: [{
+          functionAssociations: [
+            ...(this.cloudFrontFunction ? [{
                 eventType: FunctionEventType.VIEWER_REQUEST,
                 function: this.cloudFrontFunction
-            }]
-          } : {})
+            }] : []),
+            ...(this.cloudFrontURLRewrite ? [{
+                eventType: FunctionEventType.VIEWER_REQUEST,
+                function: this.cloudFrontURLRewrite
+            }] : [])
+          ],
       };
 
       // imgBehaviour

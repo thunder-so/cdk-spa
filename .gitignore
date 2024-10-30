@@ -6,7 +6,7 @@ node_modules
 # CDK asset staging directory
 .cdk.staging
 cdk.out
-*.context.json
+cdk.context*.json
 
 # Logs
 logs
