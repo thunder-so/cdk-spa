@@ -1,29 +1,26 @@
 import fs from 'fs';
 import yaml from "yaml";
+import https from "https";
 import { Construct } from "constructs";
 import { Aws, Duration, RemovalPolicy, CfnOutput, SecretValue, CfnParameter } from 'aws-cdk-lib';
-import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal, PolicyDocument } from 'aws-cdk-lib/aws-iam';
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Project, PipelineProject, LinuxBuildImage, ComputeType, Source, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
 import { Artifact, Pipeline, PipelineType, Variable } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction, LambdaInvokeAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
 import { EventBus, Rule, RuleTargetInput, EventField } from 'aws-cdk-lib/aws-events';
-import { LambdaFunction as LambdaFunctionEvent, CloudWatchLogGroup } from 'aws-cdk-lib/aws-events-targets';
+import { LambdaFunction as LambdaFunctionTarget, CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-events-targets';
 import { Function } from 'aws-cdk-lib/aws-lambda';
-import { LogGroup } from 'aws-cdk-lib/aws-logs';
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export interface PipelineProps {
   HostingBucket: IBucket;
   Distribution: IDistribution;
 
   application: string;
-  
   service: string;
-  serviceId: string,
-
   environment: string;
-  environmentId: string,
 
   // source
   sourceProps: {
@@ -46,6 +43,8 @@ export interface PipelineProps {
 
   // events
   eventArn: string;
+  serviceId: string,
+  environmentId: string,
 }
 
 export class PipelineConstruct extends Construct {
@@ -106,7 +105,7 @@ export class PipelineConstruct extends Construct {
     this.codePipeline = this.createPipeline(props);
 
     // Check if eventBusArn is provided and create events broadcast
-    if (props.eventArn) {
+    if (props.serviceId && props.environmentId && props.eventArn) {
       this.createEventsBroadcast(props);
     }
 
@@ -495,14 +494,20 @@ export class PipelineConstruct extends Construct {
     // Create a CloudWatch Log Group for debugging
     const logGroup = new LogGroup(this, 'EventBusLogGroup', {
       logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
-      removalPolicy: RemovalPolicy.DESTROY,
+      removalPolicy: RemovalPolicy.DESTROY
     });
 
-    logGroup.grantWrite(this.codePipeline.role);
-  
+    // Create IAM role for EventBridge
+    const eventRuleRole = new Role(this, 'EventRuleRole', {
+      assumedBy: new ServicePrincipal('events.amazonaws.com'),
+      description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
+    });
+
+    // Grant the role permission to write to the log group
+    logGroup.grantWrite(eventRuleRole);
+
     // Create a rule to capture execution events
     const rule = new Rule(this, 'ExecutionRule', {
-      // eventBus: eventBus,
       ruleName: `${this.resourceIdPrefix}-events`,
       eventPattern: {
         source: ['aws.codepipeline'],
@@ -511,27 +516,36 @@ export class PipelineConstruct extends Construct {
           pipeline: [this.codePipeline.pipelineName],
           state: ["STARTED", "SUCCEEDED", "RESUMED", "FAILED", "CANCELED", "SUPERSEDED"],
         },
+      }
+    });
+
+    // Add the log group as a target
+    rule.addTarget(new CloudWatchLogGroup(logGroup));
+
+    // Create IAM role for cross-account event bus access
+    const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {
+      assumedBy: new ServicePrincipal('events.amazonaws.com'),
+      roleName: 'CrossAccountEventRole',
+      inlinePolicies: {
+        AllowPutEvents: new PolicyDocument({
+          statements: [
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: ['events:PutEvents'],
+              resources: [props.eventArn],
+            }),
+          ],
+        }),
       },
     });
 
-    const eventTransformer = {
-      environmentId: props.environmentId,
-      serviceId: props.serviceId,
-      metadata: EventField.fromPath('$')
-    };
+    // external event bus 
+    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventArn);
 
-    // Add the log group as a target with event transformation
-    rule.addTarget(new CloudWatchLogGroup(logGroup, {
-      logEvent: RuleTargetInput.fromObject(eventTransformer)
-    }));
-
-    // Add the Lambda function as a target with event
-    const target = Function.fromFunctionArn(this, 'target', props.eventArn);
-    
-    rule.addTarget(new LambdaFunctionEvent(target, {
-      event: RuleTargetInput.fromObject(eventTransformer)
+    // add external event bus as target
+    rule.addTarget(new EventBusTarget(target, {
+      role: crossAccountEventRole
     }));
 
   }
-
 }
