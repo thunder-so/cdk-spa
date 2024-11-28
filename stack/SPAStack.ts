@@ -45,9 +45,7 @@ export class SPAStack extends Stack {
       Distribution: hosting.distribution,
       application: props.application,
       environment: props.environment,
-      environmentId: props.environmentId as string,
       service: props.service,
-      serviceId: props.serviceId as string,
       sourceProps: {
         owner: props.sourceProps?.owner, 
         repo: props.sourceProps?.repo, 
@@ -63,7 +61,9 @@ export class SPAStack extends Stack {
         outputdir: props.buildProps?.outputdir as string,
       },
       buildEnvironmentVariables: props.buildEnvironmentVariables as Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>,
-      eventArn: props.eventArn as string
+      eventTarget: props.eventTarget as string,
+      environmentId: props.environmentId as string,
+      serviceId: props.serviceId as string
     });
 
     /**

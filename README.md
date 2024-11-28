@@ -220,7 +220,7 @@ The `SPAStack` construct can be configured via the following props:
       <th>
         <code>string</code>
       </th>
-      <td><strong>Optional</strong>. If you have a custom CloudFront Functions file for your app, provide relative path to the file. E.g. <code>stack/urlrewrite.js</code>
+      <td><strong>Optional</strong>. If you have a custom CloudFront Functions file for your app, provide relative path to the file. E.g. <code>stack/custom.js</code>
       </td>
     </tr>
     <tr>
@@ -322,8 +322,8 @@ const appStackProps: SPAProps = {
     outputDir: 'dist/'
   },
 
-  // Custom CloudFront Functions for URL rewrite
-  edgeFunctionFilePath: 'stack/urlrewrite.js',
+  // Custom CloudFront Functions
+  // edgeFunctionFilePath: 'stack/custom.js',
 
   // Optional: Domain settings
   // - create a hosted zone for your domain

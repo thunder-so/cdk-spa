@@ -1,6 +1,5 @@
 import fs from 'fs';
 import yaml from "yaml";
-import https from "https";
 import { Construct } from "constructs";
 import { Aws, Duration, RemovalPolicy, CfnOutput, SecretValue, CfnParameter } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal, PolicyDocument } from 'aws-cdk-lib/aws-iam';
@@ -9,9 +8,8 @@ import { Project, PipelineProject, LinuxBuildImage, ComputeType, Source, BuildSp
 import { Artifact, Pipeline, PipelineType, Variable } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction, LambdaInvokeAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
-import { EventBus, Rule, RuleTargetInput, EventField } from 'aws-cdk-lib/aws-events';
-import { LambdaFunction as LambdaFunctionTarget, CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-events-targets';
-import { Function } from 'aws-cdk-lib/aws-lambda';
+import { EventBus, Rule, type IRuleTarget, RuleTargetInput, EventField, Connection, Authorization, ApiDestination, HttpMethod } from 'aws-cdk-lib/aws-events';
+import { LambdaFunction as LambdaFunctionTarget, CloudWatchLogGroup, EventBus as EventBusTarget, ApiDestination as ApiDestinationTarget } from 'aws-cdk-lib/aws-events-targets';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export interface PipelineProps {
@@ -39,12 +37,12 @@ export interface PipelineProps {
     buildcmd: string;
     outputdir: string;
   };
-  buildEnvironmentVariables?: Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>
+  buildEnvironmentVariables?: Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>;
 
   // events
-  eventArn: string;
-  serviceId: string,
-  environmentId: string,
+  eventTarget: string;
+  serviceId: string;
+  environmentId: string;
 }
 
 export class PipelineConstruct extends Construct {
@@ -105,7 +103,7 @@ export class PipelineConstruct extends Construct {
     this.codePipeline = this.createPipeline(props);
 
     // Check if eventBusArn is provided and create events broadcast
-    if (props.serviceId && props.environmentId && props.eventArn) {
+    if (props.serviceId && props.environmentId && props.eventTarget) {
       this.createEventsBroadcast(props);
     }
 
@@ -507,7 +505,7 @@ export class PipelineConstruct extends Construct {
     logGroup.grantWrite(eventRuleRole);
 
     // Create a rule to capture execution events
-    const rule = new Rule(this, 'ExecutionRule', {
+    const rule = new Rule(this, 'EventsRule', {
       ruleName: `${this.resourceIdPrefix}-events`,
       eventPattern: {
         source: ['aws.codepipeline'],
@@ -522,29 +520,29 @@ export class PipelineConstruct extends Construct {
     // Add the log group as a target
     rule.addTarget(new CloudWatchLogGroup(logGroup));
 
-    // Create IAM role for cross-account event bus access
-    const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {
-      assumedBy: new ServicePrincipal('events.amazonaws.com'),
-      roleName: 'CrossAccountEventRole',
-      inlinePolicies: {
-        AllowPutEvents: new PolicyDocument({
-          statements: [
-            new PolicyStatement({
-              effect: Effect.ALLOW,
-              actions: ['events:PutEvents'],
-              resources: [props.eventArn],
-            }),
-          ],
-        }),
-      },
+    // Create a connection with blank username and password
+    const connection = new Connection(this, 'EventsConnection', {
+      authorization: Authorization.basic(props.environmentId, SecretValue.secretsManager(props.githubAccessTokenArn)),
+      description: 'Connection for API Destination with credentials',
     });
 
-    // external event bus 
-    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventArn);
+    // Create the API destination
+    const apiDestination = new ApiDestination(this, 'EventsAPI', {
+      connection,
+      endpoint: props.eventTarget,
+      httpMethod: HttpMethod.POST
+    });
 
-    // add external event bus as target
-    rule.addTarget(new EventBusTarget(target, {
-      role: crossAccountEventRole
+    const eventTransformer = RuleTargetInput.fromObject({
+      environmentId: props.environmentId,
+      serviceId: props.serviceId,
+      metadata: EventField.fromPath('$')
+    })
+
+    // Add the API destination as a target
+    rule.addTarget(new ApiDestinationTarget(apiDestination, {
+      event: eventTransformer,
+      retryAttempts: 0
     }));
 
   }
