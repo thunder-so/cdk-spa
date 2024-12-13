@@ -3,7 +3,7 @@ import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
-import { HttpOrigin, S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { CfnDistribution, Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, PriceClass, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods } from "aws-cdk-lib/aws-cloudfront";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
@@ -96,7 +96,12 @@ export class HostingConstruct extends Construct {
      * @returns cloudfront function
      */
     private createCloudFrontFunction(props: HostingProps): CloudFrontFunction {
-      const cloudFrontFunctionCode = fs.readFileSync(props.edgeFunctionFilePath as string, "utf8");
+      let cloudFrontFunctionCode: string;
+      try {
+        cloudFrontFunctionCode = fs.readFileSync(props.edgeFunctionFilePath as string, "utf8");
+      } catch (error) {
+        throw new Error(`Failed to read CloudFront function file at ${props.edgeFunctionFilePath}: ${error}`);
+      }
 
       const cloudFrontFunction = new CloudFrontFunction(this, 'CloudFrontFunction', {
         code: CloudFrontFunctionCode.fromInline(cloudFrontFunctionCode),
@@ -130,12 +135,12 @@ export class HostingConstruct extends Construct {
           }
        `;
 
-       const URLRewriteFunction = new CloudFrontFunction(this, 'URLRewriteFunction', {
+       const CloudFrontURLRewrite = new CloudFrontFunction(this, 'URLRewriteFunction', {
         code: CloudFrontFunctionCode.fromInline(functionCode),
         comment: `CloudFront Function: for SPA URL rewrites`,
       });
 
-      return URLRewriteFunction;
+      return CloudFrontURLRewrite;
     }
 
     /**
@@ -152,8 +157,7 @@ export class HostingConstruct extends Construct {
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
             enforceSSL: true,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
+            removalPolicy: RemovalPolicy.RETAIN
         });
 
         // primary hosting bucket
@@ -169,8 +173,7 @@ export class HostingConstruct extends Construct {
               ignorePublicAcls: true,
               restrictPublicBuckets: true,
             }),
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
+            removalPolicy: RemovalPolicy.RETAIN
         });
 
         // Setting the origin to HTTP server
@@ -196,14 +199,13 @@ export class HostingConstruct extends Construct {
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
             enforceSSL: true,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true,
+            removalPolicy: RemovalPolicy.RETAIN
         });
         this.accessLogsBucket = accessLogsBucket;
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
-          cachePolicyName: "CachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`, // "CachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           comment: "Default policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -217,7 +219,7 @@ export class HostingConstruct extends Construct {
         
         // imgCachePolicy
         const imgCachePolicy = new CachePolicy(this, "ImagesCachePolicy", {
-          cachePolicyName: "ImagesCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          cachePolicyName: `${this.resourceIdPrefix}-ImagesCachePolicy`, // "ImagesCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           comment: "Images cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -228,8 +230,8 @@ export class HostingConstruct extends Construct {
         });
         
         // staticAssetsCachePolicy
-        const staticAssetsCachePolicy = new CachePolicy(this, "staticAssetsCachePolicy", {
-          cachePolicyName: "StaticAssetsCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+        const staticAssetsCachePolicy = new CachePolicy(this, "StaticAssetsCachePolicy", {
+          cachePolicyName: `${this.resourceIdPrefix}-StaticAssetsCachePolicy`, // "StaticAssetsCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           comment: "Static assets cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -241,7 +243,7 @@ export class HostingConstruct extends Construct {
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
-            responseHeadersPolicyName: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+            responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`, // "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
             comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
             securityHeadersBehavior: {
               contentTypeOptions: { override: true },
