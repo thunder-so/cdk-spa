@@ -177,15 +177,17 @@ export class PipelineConstruct extends Construct {
       new PolicyStatement({
         effect: Effect.ALLOW,
         actions: ["s3:ListBucket", "s3:GetObject", "s3:PutObject"],
-        resources: [`${this.buildOutputBucket.bucketArn}/*`],
+        resources: [
+          this.buildOutputBucket.bucketArn,
+          `${this.buildOutputBucket.bucketArn}/*`
+        ],
       })
     );
 
     this.buildOutputBucket.addToResourcePolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
-        // @ts-ignore
-        principals: [new ArnPrincipal(project.role.roleArn)],
+        principals: [new ArnPrincipal(project.role?.roleArn as string)],
         actions: ["s3:ListBucket", "s3:GetObject", "s3:PutObject"],
         resources: [
           this.buildOutputBucket.bucketArn,
@@ -200,7 +202,7 @@ export class PipelineConstruct extends Construct {
         effect: Effect.ALLOW,
         actions: ["s3:ListBucket", "s3:GetObject", "s3:PutObject"],
         resources: [
-          `${props.HostingBucket.bucketArn}`,
+          props.HostingBucket.bucketArn,
           `${props.HostingBucket.bucketArn}/*`
         ],
       })
@@ -210,8 +212,7 @@ export class PipelineConstruct extends Construct {
     props.HostingBucket.addToResourcePolicy(
       new PolicyStatement({
         effect: Effect.ALLOW,
-        // @ts-ignore
-        principals: [new ArnPrincipal(project.role.roleArn)],
+        principals: [new ArnPrincipal(project.role?.roleArn as string)],
         actions: ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
         resources: [
           props.HostingBucket.bucketArn,
@@ -332,8 +333,7 @@ export class PipelineConstruct extends Construct {
         effect: Effect.ALLOW,
         actions: ["s3:PutObject"],
         resources: [`${this.buildOutputBucket.bucketArn}/*`],
-        // @ts-ignore
-        principals: [new ArnPrincipal(project.role.roleArn)],
+        principals: [new ArnPrincipal(project.role?.roleArn!)],
       })
     );
 
@@ -524,30 +524,30 @@ export class PipelineConstruct extends Construct {
     // Add the log group as a target
     rule.addTarget(new CloudWatchLogGroup(logGroup));
 
-    // Create a connection with target
-    const connection = new Connection(this, 'EventsConnection', {
-      authorization: Authorization.basic(props.environmentId, SecretValue.secretsManager(props.githubAccessTokenArn)),
-      description: 'Connection for API Destination with credentials',
-    });
+    // // Create a connection with target
+    // const connection = new Connection(this, 'EventsConnection', {
+    //   authorization: Authorization.basic(props.environmentId, SecretValue.secretsManager(props.githubAccessTokenArn)),
+    //   description: 'Connection for API Destination with credentials',
+    // });
 
-    // Create the API destination
-    const apiDestination = new ApiDestination(this, 'EventsAPI', {
-      connection,
-      endpoint: props.eventTarget,
-      httpMethod: HttpMethod.POST
-    });
+    // // Create the API destination
+    // const apiDestination = new ApiDestination(this, 'EventsAPI', {
+    //   connection,
+    //   endpoint: props.eventTarget,
+    //   httpMethod: HttpMethod.POST
+    // });
 
-    const eventTransformer = RuleTargetInput.fromObject({
-      environmentId: props.environmentId,
-      serviceId: props.serviceId,
-      metadata: EventField.fromPath('$')
-    })
+    // const eventTransformer = RuleTargetInput.fromObject({
+    //   environmentId: props.environmentId,
+    //   serviceId: props.serviceId,
+    //   metadata: EventField.fromPath('$')
+    // })
 
-    // Add the API destination as a target
-    rule.addTarget(new ApiDestinationTarget(apiDestination, {
-      event: eventTransformer,
-      retryAttempts: 0
-    }));
+    // // Add the API destination as a target
+    // rule.addTarget(new ApiDestinationTarget(apiDestination, {
+    //   event: eventTransformer,
+    //   retryAttempts: 0
+    // }));
 
   }
 }

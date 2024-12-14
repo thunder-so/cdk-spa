@@ -2,7 +2,7 @@ import fs from 'fs';
 import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { PolicyStatement, Effect, ServicePrincipal, AnyPrincipal } from "aws-cdk-lib/aws-iam";
 import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { CfnDistribution, Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, PriceClass, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods } from "aws-cdk-lib/aws-cloudfront";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
@@ -157,7 +157,8 @@ export class HostingConstruct extends Construct {
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
             enforceSSL: true,
-            removalPolicy: RemovalPolicy.RETAIN
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true
         });
 
         // primary hosting bucket
@@ -199,7 +200,8 @@ export class HostingConstruct extends Construct {
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
             enforceSSL: true,
-            removalPolicy: RemovalPolicy.RETAIN
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true
         });
         this.accessLogsBucket = accessLogsBucket;
 
@@ -366,7 +368,8 @@ export class HostingConstruct extends Construct {
           new PolicyStatement({
             effect: Effect.ALLOW,
             actions: ['s3:GetObject'], // 's3:ListBucket' slows down deployment
-            principals: [new ServicePrincipal('cloudfront.amazonaws.com')],
+            // principals: [new ServicePrincipal('cloudfront.amazonaws.com')],
+            principals: [new AnyPrincipal()],
             resources: [`${this.hostingBucket.bucketArn}/*`],
             conditions: {
               StringEquals: {

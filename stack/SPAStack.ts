@@ -2,6 +2,7 @@ import { Aws, ArnFormat, Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { ApplicationConstruct, EnvironmentConstruct, HostingConstruct, PipelineConstruct } from '../lib';
 import type { SPAProps } from './SPAProps'; 
+import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { BuildEnvironmentVariableType } from 'aws-cdk-lib/aws-codebuild';
 import { CfnDistribution, CfnOriginAccessControl } from "aws-cdk-lib/aws-cloudfront";
 import { CfnBucketPolicy } from "aws-cdk-lib/aws-s3";
@@ -83,11 +84,16 @@ export class SPAStack extends Stack {
       hosting.originAccessControl?.getAtt("Id")
     );
 
+    // const comS3PolicyOverride = hosting?.hostingBucket.node.findChild("Policy").node.defaultChild as CfnBucketPolicy;
+    // const statement = comS3PolicyOverride.policyDocument.statements[1];
+    // if (statement["_principal"] && statement["_principal"].CanonicalUser) {
+    //   delete statement["_principal"].CanonicalUser;
+    // }
+
+    // remove the second statement entirely (the one with Principal.CanonicalUser)
     const comS3PolicyOverride = hosting?.hostingBucket.node.findChild("Policy").node.defaultChild as CfnBucketPolicy;
-    const statement = comS3PolicyOverride.policyDocument.statements[1];
-    if (statement["_principal"] && statement["_principal"].CanonicalUser) {
-      delete statement["_principal"].CanonicalUser;
-    }
+    const statements = comS3PolicyOverride.policyDocument.statements;
+    statements.splice(1, 1);
 
     const s3OriginNode = hosting?.distribution.node
       .findAll()
