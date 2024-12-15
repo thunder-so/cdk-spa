@@ -42,8 +42,6 @@ export interface PipelineProps {
 
   // events
   eventTarget: string;
-  serviceId: string;
-  environmentId: string;
 }
 
 export class PipelineConstruct extends Construct {
@@ -103,9 +101,9 @@ export class PipelineConstruct extends Construct {
     // create pipeline
     this.codePipeline = this.createPipeline(props);
 
-    // Check if event params are provided and create events broadcast
-    if (props.serviceId && props.environmentId && props.eventTarget) {
-      this.createEventsBroadcast(props);
+    // Check if event target is provided and create pipeline events log and ping
+    if (props.eventTarget) {
+      this.createPipelineEvents(props);
     }
 
     // Create an output for the pipeline's name
@@ -490,26 +488,10 @@ export class PipelineConstruct extends Construct {
 
 
   /**
-   * Create Events Broadcast
+   * Log Pipeline Events and ping to external service
    * @param eventTarget 
    */
-  private createEventsBroadcast(props: PipelineProps) {
-    // Create a CloudWatch Log Group for debugging
-    const logGroup = new LogGroup(this, 'EventsLogGroup', {
-      logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
-      removalPolicy: RemovalPolicy.DESTROY,
-      retention: RetentionDays.ONE_YEAR
-    });
-
-    // Create IAM role for EventBridge
-    const eventRuleRole = new Role(this, 'EventsRuleRole', {
-      assumedBy: new ServicePrincipal('events.amazonaws.com'),
-      description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
-    });
-
-    // Grant the role permission to write to the log group
-    logGroup.grantWrite(eventRuleRole);
-
+  private createPipelineEvents(props: PipelineProps) {
     // Create a rule to capture execution events
     const rule = new Rule(this, 'EventsRule', {
       ruleName: `${this.resourceIdPrefix}-events`,
@@ -523,33 +505,50 @@ export class PipelineConstruct extends Construct {
       }
     });
 
+    // Create a CloudWatch Log Group for debugging
+    const logGroup = new LogGroup(this, 'EventsLogGroup', {
+      logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
+      removalPolicy: RemovalPolicy.DESTROY,
+      retention: RetentionDays.ONE_YEAR
+    });
+
+    // Create IAM role for log group
+    const logGroupEventRole = new Role(this, 'LogGroupEventRole', {
+      assumedBy: new ServicePrincipal('events.amazonaws.com'),
+      roleName: `${this.resourceIdPrefix}-LogGroupEventRole`,
+      description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
+    });
+
+    // Grant the role permission to write to the log group
+    logGroup.grantWrite(logGroupEventRole);
+
     // Add the log group as a target
     rule.addTarget(new CloudWatchLogGroup(logGroup));
 
-    // // Create a connection with target
-    // const connection = new Connection(this, 'EventsConnection', {
-    //   authorization: Authorization.basic(props.environmentId, SecretValue.secretsManager(props.githubAccessTokenArn)),
-    //   description: 'Connection for API Destination with credentials',
-    // });
+    // Create IAM role for cross-account event bus access
+    const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {
+      assumedBy: new ServicePrincipal('events.amazonaws.com'),
+      roleName: `${this.resourceIdPrefix}-CrossAccountEventRole`,
+      description: 'Role for EventBridge to write pipeline events to external Event Bus',
+      inlinePolicies: {
+        AllowPutEvents: new PolicyDocument({
+          statements: [
+            new PolicyStatement({
+              effect: Effect.ALLOW,
+              actions: ['events:PutEvents'],
+              resources: [props.eventTarget],
+            }),
+          ],
+        }),
+      },
+    });
 
-    // // Create the API destination
-    // const apiDestination = new ApiDestination(this, 'EventsAPI', {
-    //   connection,
-    //   endpoint: props.eventTarget,
-    //   httpMethod: HttpMethod.POST
-    // });
+    // add external event bus as target
+    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventTarget);
 
-    // const eventTransformer = RuleTargetInput.fromObject({
-    //   environmentId: props.environmentId,
-    //   serviceId: props.serviceId,
-    //   metadata: EventField.fromPath('$')
-    // })
-
-    // // Add the API destination as a target
-    // rule.addTarget(new ApiDestinationTarget(apiDestination, {
-    //   event: eventTransformer,
-    //   retryAttempts: 0
-    // }));
+    rule.addTarget(new EventBusTarget(target, {
+      role: crossAccountEventRole
+    }));
 
   }
 }

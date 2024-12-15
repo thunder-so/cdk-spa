@@ -2,7 +2,6 @@ import { Aws, ArnFormat, Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { ApplicationConstruct, EnvironmentConstruct, HostingConstruct, PipelineConstruct } from '../lib';
 import type { SPAProps } from './SPAProps'; 
-import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { BuildEnvironmentVariableType } from 'aws-cdk-lib/aws-codebuild';
 import { CfnDistribution, CfnOriginAccessControl } from "aws-cdk-lib/aws-cloudfront";
 import { CfnBucketPolicy } from "aws-cdk-lib/aws-s3";
@@ -63,9 +62,7 @@ export class SPAStack extends Stack {
         outputdir: props.buildProps?.outputdir as string,
       },
       buildEnvironmentVariables: props.buildEnvironmentVariables as Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>,
-      eventTarget: props.eventTarget as string,
-      environmentId: props.environmentId as string,
-      serviceId: props.serviceId as string
+      eventTarget: props.eventTarget as string
     });
 
     /**

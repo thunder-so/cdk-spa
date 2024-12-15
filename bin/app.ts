@@ -21,9 +21,7 @@ const {
   domain,
   globalCertificateArn,
   hostedZoneId,
-  eventTarget,
-  environmentId,
-  serviceId
+  eventTarget
 } = metadata;
 
 const appStackProps: SPAProps = {
@@ -52,9 +50,7 @@ const appStackProps: SPAProps = {
   domain,
   globalCertificateArn,
   hostedZoneId,
-  eventTarget,
-  environmentId,
-  serviceId
+  eventTarget
 };
 
 new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);

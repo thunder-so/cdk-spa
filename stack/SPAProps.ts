@@ -90,12 +90,9 @@ export interface SPAProps extends StackProps {
     /**
      * Thunder.so platform features. 
      * You can use the stack safely without using these props.
-     * - The pipeline events are broadcast using URL of Lambda function. Defaults to null.
-     * - Unique CUID identifiers for environment and service. Defaults to null.
+     * - The pipeline events are broadcast using an event bus. Defaults to null.
      */
     readonly eventTarget?: string;
-    readonly environmentId?: string;
-    readonly serviceId?: string;
 
 }
   
