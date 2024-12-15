@@ -51,7 +51,8 @@ export interface SPAProps extends StackProps {
      * If you provide a buildSpec file, skip this.
      */
     readonly buildProps?: {
-      runtime: number;
+      runtime: string;
+      runtime_version: string;
       installcmd: string;
       buildcmd: string;
       outputdir: string;

@@ -42,7 +42,8 @@ const appStackProps: SPAProps = {
   },
   githubAccessTokenArn,
   buildProps: {
-    runtime: buildProps?.runtime as number,
+    runtime: buildProps?.runtime as string,
+    runtime_version: buildProps?.runtime_version as string,
     installcmd: buildProps?.installcmd as string,
     buildcmd: buildProps?.buildcmd as string,
     outputdir: buildProps?.outputdir as string

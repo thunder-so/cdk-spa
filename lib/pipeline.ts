@@ -32,7 +32,8 @@ export interface PipelineProps {
   // build
   buildSpecFilePath?: string;
   buildProps?: {
-    runtime: number;
+    runtime: string;
+    runtime_version: string;
     installcmd: string;
     buildcmd: string;
     outputdir: string;
@@ -262,7 +263,8 @@ export class PipelineConstruct extends Construct {
         phases: {
             install: {
                 'runtime-versions': {
-                    nodejs: props.buildProps?.runtime || '20'
+                    // nodejs: props.buildProps?.runtime || '20'
+                  [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime || '20'
                 },
                 commands: [ 
                   `cd ${props.sourceProps?.rootdir || './'}`,

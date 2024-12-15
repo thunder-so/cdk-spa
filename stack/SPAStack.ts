@@ -56,7 +56,8 @@ export class SPAStack extends Stack {
       githubAccessTokenArn: props.githubAccessTokenArn as string,
       buildSpecFilePath: props.buildSpecFilePath as string,
       buildProps: {
-        runtime: props.buildProps?.runtime as number,
+        runtime: props.buildProps?.runtime as string,
+        runtime_version: props.buildProps?.runtime_version as string,
         installcmd: props.buildProps?.installcmd as string,
         buildcmd: props.buildProps?.buildcmd as string,
         outputdir: props.buildProps?.outputdir as string,

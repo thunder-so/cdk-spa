@@ -18,20 +18,22 @@ const appStackProps: SPAProps = {
     rootdir: ''
   },
 
-  // Auto deployment
-  // - create a Github personal access token
-  // - store in Secrets Manager as plaintext
-  githubAccessTokenArn: 'arn:aws:ssm:us-east-1:123456789012:parameter/github-token',
-
-  // Either provide a buildspec.yml file OR fill out buildProps
-  // - providing a buildspec.yml will override buildProps and sourceProps.rootdir
-  // buildSpecFilePath: 'stack/buildspec.yml',
+  // Build variables for CodeBuild
+  // runtime and runtime_version https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html
   buildProps: {
-    runtime: 20, // nodejs versions 16, 18 and 20 supported
+    runtime: 'nodejs',
+    runtime_version: 20,
     installcmd: 'npm ci',
     buildcmd: 'npm run build',
     outputdir: 'dist/'
   },
+  // Providing a buildspec.yml will override buildProps and sourceProps.rootdir
+  // buildSpecFilePath: 'stack/buildspec.yml',
+
+  // Auto deployment
+  // - create a Github personal access token
+  // - store in Secrets Manager as plaintext
+  githubAccessTokenArn: 'arn:aws:ssm:us-east-1:123456789012:parameter/github-token',
 
   // Optional: Domain settings
   // - create a hosted zone for your domain
@@ -41,7 +43,7 @@ const appStackProps: SPAProps = {
   globalCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abcd1234-abcd-1234-abcd-1234abcd1234',
 
   // Custom Cloudfront Functions
-  // edgeFunctionFilePath: 'stack/urlrewrite.js',
+  // edgeFunctionFilePath: 'custom.js',
 
   // all resources created in the stack will be tagged
   // tags: {
