@@ -172,6 +172,7 @@ The `SPAStack` construct can be configured via the following props:
         <strong>Required</strong> if <code>buildSpecFilePath</code> is blank. 
         <ul>
           <li><code>runtime: string;</code></li>
+          <li><code>runtime_version: string;</code></li>
           <li><code>installcmd: string;</code></li>
           <li><code>buildcmd: string;</code></li>
           <li><code>outputdir: string;</code></li>
@@ -307,20 +308,17 @@ const appStackProps: SPAProps = {
     rootdir: ''
   },
 
-  // Auto deployment
-  // - create a Github personal access token
-  // - store in Secrets Manager as plaintext
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:123456789012:secret/github-token',
-
-  // Either provide a buildspec.yml file OR fill out buildProps
-  // - providing a buildspec.yml will override buildProps and sourceProps.rootdir
-  // buildSpecFilePath: 'stack/buildspec.yml',
+  // Build variables for CodeBuild
+  // https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html
   buildProps: {
-    runtime: 20, // nodejs versions 16, 18 and 20 supported
+    runtime: 'nodejs',
+    runtime_version: 20,
     installcmd: 'npm ci',
     buildcmd: 'npm run build',
-    outputDir: 'dist/'
+    outputdir: 'dist/'
   },
+  // Providing a buildspec.yml will override buildProps and sourceProps.rootdir
+  // buildSpecFilePath: 'stack/buildspec.yml',
 
   // Custom CloudFront Functions
   // edgeFunctionFilePath: 'stack/custom.js',

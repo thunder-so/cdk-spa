@@ -19,7 +19,7 @@ const appStackProps: SPAProps = {
   },
 
   // Build variables for CodeBuild
-  // runtime and runtime_version https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html
+  // https://docs.aws.amazon.com/codebuild/latest/userguide/available-runtimes.html
   buildProps: {
     runtime: 'nodejs',
     runtime_version: 20,
