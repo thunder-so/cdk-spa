@@ -262,7 +262,7 @@ export class PipelineConstruct extends Construct {
             install: {
                 'runtime-versions': {
                     // nodejs: props.buildProps?.runtime || '20'
-                  [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime || '20'
+                  [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '20'
                 },
                 commands: [ 
                   `cd ${props.sourceProps?.rootdir || './'}`,
