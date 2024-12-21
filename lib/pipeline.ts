@@ -38,7 +38,8 @@ export interface PipelineProps {
     buildcmd: string;
     outputdir: string;
   };
-  buildEnvironmentVariables?: Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>;
+  // buildEnvironmentVariables?: Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>;
+  buildEnvironmentVariables: { key: string; resource: string; }[],
 
   // events
   eventTarget: string;
@@ -281,14 +282,11 @@ export class PipelineConstruct extends Construct {
     }
 
     // environment variables
-    const buildEnvironmentVariables = Object.entries(props.buildEnvironmentVariables || {}).reduce(
-      (acc, [name, { value }]) => {
-        if (typeof value === 'string') {
-          acc[name] = { value, type: BuildEnvironmentVariableType.PARAMETER_STORE };
-        }
+    const buildEnvironmentVariables: Record<string, BuildEnvironmentVariable> = (props.buildEnvironmentVariables || []).reduce(
+      (acc: Record<string, BuildEnvironmentVariable>, { key, resource }) => {
+        acc[key] = { value: resource, type: BuildEnvironmentVariableType.PARAMETER_STORE };
         return acc;
-      },
-      {} as Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>
+      }, {}
     );
     
     // create the cloudbuild project

@@ -62,10 +62,11 @@ export interface SPAProps extends StackProps {
      * If you have custom environments for build step, create Parameter Store variables as plaintext and use this format:
      * Must be in the same region as your stack.
      * 
-     *   MY_VARIABLE: { value: "/path-to/your-parameter" }
-     * 
+     *   buildEnvironmentVariables: [
+     *     { key: 'PUBLIC_EXAMPLE', resource: '/path-to/your-parameter' }
+     *   ]
      */
-    readonly buildEnvironmentVariables?: Record<string, { value: string; }>;
+    readonly buildEnvironmentVariables?: { key: string; resource: string; }[];
 
     /**
      * Optional. If you have a custom CloudFront Functions file for your app, provide the relative path to the file.
