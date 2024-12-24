@@ -38,6 +38,8 @@ export class SPAStack extends Stack {
       domain: props.domain as string,
       globalCertificateArn: props.globalCertificateArn as string,
       hostedZoneId: props.hostedZoneId as string,
+      redirects: props.redirects,
+      rewrites: props.rewrites
     });
 
     const pipeline = new PipelineConstruct(this, 'Pipeline', {

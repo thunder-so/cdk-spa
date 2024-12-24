@@ -4,7 +4,7 @@ import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { CfnDistribution, Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, PriceClass, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods } from "aws-cdk-lib/aws-cloudfront";
+import { Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, PriceClass, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods, FunctionRuntime } from "aws-cdk-lib/aws-cloudfront";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
@@ -18,6 +18,8 @@ export interface HostingProps {
     domain?: string;
     globalCertificateArn?: string;
     hostedZoneId?: string;
+    redirects?: { source: string; destination: string; }[];
+    rewrites?: { source: string; destination: string; }[];
 }
 
 export class HostingConstruct extends Construct {
@@ -50,10 +52,14 @@ export class HostingConstruct extends Construct {
     public originAccessControl: CfnOriginAccessControl|undefined;
 
     /**
-     * The CloudFront Edge Functions
+     * Redirects and Rewrites CloudFront Function
+     */
+    private cloudFrontRedirectsRewrites: CloudFrontFunction;
+
+    /**
+     * The custom CloudFront Functions file provided
      */
     private cloudFrontFunction: CloudFrontFunction;
-    private cloudFrontURLRewrite: CloudFrontFunction;
     
 
     constructor(scope: Construct, id: string, props: HostingProps) {
@@ -63,7 +69,7 @@ export class HostingConstruct extends Construct {
 
       this.createHostingBucket(props);
 
-      this.cloudFrontURLRewrite = this.createCloudFrontURLRewrite(props);
+      this.cloudFrontRedirectsRewrites = this.createCloudFrontRedirectsRewrites(props);
 
       if (props.edgeFunctionFilePath) {
         this.cloudFrontFunction = this.createCloudFrontFunction(props);
@@ -110,37 +116,95 @@ export class HostingConstruct extends Construct {
 
       return cloudFrontFunction;
     }
-    
+
     /**
-     * Create a CloudFront Function for SPA URL rewrite
+     * Create a CloudFront Function for Redirects and Rewrites
      * @param props HostingProps
      * @returns cloudfront function
      */
-    private createCloudFrontURLRewrite(props: HostingProps): CloudFrontFunction {
-      const functionCode = `
-          function handler(event) {
-              var request = event.request;
-              var uri = request.uri;
-              
-              // Check whether the URI is missing a file name.
-              if (uri.endsWith('/')) {
-                  request.uri += 'index.html';
-              } 
-              // Check whether the URI is missing a file extension.
-              else if (!uri.includes('.')) {
-                  request.uri += '/index.html';
+    // Helper function to escape special regex characters
+    private escapeRegex = (string: string) => {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
+
+    private createCloudFrontRedirectsRewrites(props: HostingProps): CloudFrontFunction {
+      const redirects = props.redirects || [];
+      const rewrites = props.rewrites || [];
+
+      // Generate redirects code
+      const redirectsCode = redirects.map((rule) => {
+        const source = this.escapeRegex(rule.source)
+          .replace(/:[^/]+/g, '([^/]+)')  // Match :param
+          .replace(/\\\*/g, '(.*)');      // Match * wildcard
+        
+        let destination = rule.destination
+          .replace(/:[^/]+/g, '$1')
+          .replace(/\*/g, '$1');
+        
+        return `
+          if (uri.match(new RegExp('^${source}$'))) {
+            return {
+              statusCode: 301,
+              statusDescription: 'Moved Permanently',
+              headers: {
+                'location': {
+                  value: 'https://' + host + uri.replace(new RegExp('^${source}$'), '${destination}')
+                }
               }
-
-              return request;
+            };
           }
-       `;
+        `;
+      }).join('\n');
 
-       const CloudFrontURLRewrite = new CloudFrontFunction(this, 'URLRewriteFunction', {
+      // Generate rewrites code
+      const rewritesCode = rewrites.map((rule) => {
+        const source = this.escapeRegex(rule.source)
+          .replace(/:[^/]+/g, '([^/]+)')
+          .replace(/\*/g, '(.*)');
+        
+        let destination = rule.destination
+          .replace(/:[^/]+/g, '$1')
+          .replace(/\*/g, '$1');
+        
+        return `
+          if (uri.match(new RegExp('^${source}$'))) {
+            request.uri = uri.replace(new RegExp('^${source}$'), '${destination}');
+          }
+        `;
+      }).join('\n');
+
+      const functionCode = `
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          var host = event.context.distributionDomainName;
+
+          // Handle redirects
+          ${redirectsCode}
+          
+          // Handle rewrites
+          ${rewritesCode}
+          
+          // Check whether the URI is missing a file name.
+          if (request.uri.endsWith('/')) {
+              request.uri += 'index.html';
+          } 
+          // Check whether the URI is missing a file extension.
+          else if (!request.uri.includes('.')) {
+              request.uri += '/index.html';
+          }
+
+          return request;
+        }
+      `;
+
+      const cloudFrontRedirectsRewrites = new CloudFrontFunction(this, 'RedirectsRewritesFunction', {
         code: CloudFrontFunctionCode.fromInline(functionCode),
-        comment: `CloudFront Function: for SPA URL rewrites`,
+        comment: `CloudFront Function: for SPA Redirects and Rewrites`,
+        runtime: FunctionRuntime.JS_2_0
       });
 
-      return CloudFrontURLRewrite;
+      return cloudFrontRedirectsRewrites;
     }
 
     /**
@@ -207,7 +271,7 @@ export class HostingConstruct extends Construct {
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
-          cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`, // "CachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`,
           comment: "Default policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -221,7 +285,7 @@ export class HostingConstruct extends Construct {
         
         // imgCachePolicy
         const imgCachePolicy = new CachePolicy(this, "ImagesCachePolicy", {
-          cachePolicyName: `${this.resourceIdPrefix}-ImagesCachePolicy`, // "ImagesCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          cachePolicyName: `${this.resourceIdPrefix}-ImagesCachePolicy`,
           comment: "Images cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -233,7 +297,7 @@ export class HostingConstruct extends Construct {
         
         // staticAssetsCachePolicy
         const staticAssetsCachePolicy = new CachePolicy(this, "StaticAssetsCachePolicy", {
-          cachePolicyName: `${this.resourceIdPrefix}-StaticAssetsCachePolicy`, // "StaticAssetsCachePolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          cachePolicyName: `${this.resourceIdPrefix}-StaticAssetsCachePolicy`,
           comment: "Static assets cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(365),
@@ -245,7 +309,7 @@ export class HostingConstruct extends Construct {
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
-            responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`, // "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+            responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
             comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
             securityHeadersBehavior: {
               contentTypeOptions: { override: true },
@@ -277,13 +341,13 @@ export class HostingConstruct extends Construct {
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           functionAssociations: [
+            ...(this.cloudFrontRedirectsRewrites ? [{
+              eventType: FunctionEventType.VIEWER_REQUEST,
+              function: this.cloudFrontRedirectsRewrites
+          }] : []),
             ...(this.cloudFrontFunction ? [{
                 eventType: FunctionEventType.VIEWER_REQUEST,
                 function: this.cloudFrontFunction
-            }] : []),
-            ...(this.cloudFrontURLRewrite ? [{
-                eventType: FunctionEventType.VIEWER_REQUEST,
-                function: this.cloudFrontURLRewrite
             }] : [])
           ],
       };

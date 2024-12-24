@@ -14,7 +14,14 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
-- 
+-
+
+## [0.11.0]
+
+### Added
+
+- Redirects
+- Rewrites
 
 ## [0.6.1] - 2024-08-18
 

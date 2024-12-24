@@ -89,6 +89,16 @@ export interface SPAProps extends StackProps {
     readonly hostedZoneId?: string;
 
     /**
+     * Optional: Array of redirects: source and destination paths
+     */
+    readonly redirects?: { source: string; destination: string; }[];
+
+    /**
+     * Optional: Array of rewrites: source and destination paths
+     */
+    readonly rewrites?: { source: string; destination: string; }[];
+
+    /**
      * Thunder.so platform features. 
      * You can use the stack safely without using these props.
      * - The pipeline events are broadcast using an event bus. Defaults to null.

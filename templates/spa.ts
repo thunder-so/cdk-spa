@@ -47,6 +47,30 @@ const appStackProps: SPAProps = {
   //   { key: 'PUBLIC_EXAMPLE', resource: '/path-to/your-parameter' }
   // ]
 
+  // Optional: Redirects and Rewrites
+  //  - supports named parameters ":foo" and wildcard "*"
+  // "redirects": [
+  //   {
+  //     "source": "/contact",
+  //     "destination": "/"
+  //   },
+  //   {
+  //     "source": "/docs/:bar",
+  //     "destination": "/:bar"
+  //   },
+  //   {
+  //     "source": "/guide/*",
+  //     "destination": "/blog/*"
+  //   }
+  // ],
+
+  // "rewrites": [
+  //   {
+  //     "source": "/test",
+  //     "destination": "/about/index.html"
+  //   }
+  // ],
+
   // Custom Cloudfront Functions
   // edgeFunctionFilePath: 'custom.js',
 
