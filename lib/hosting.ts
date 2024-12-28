@@ -133,38 +133,52 @@ export class HostingConstruct extends Construct {
 
       // Generate redirects code
       const redirectsCode = redirects.map((rule) => {
+        const params: string[] = [];
+
         const source = this.escapeRegex(rule.source)
-          .replace(/:[^/]+/g, '([^/]+)')  // Match :param
-          .replace(/\\\*/g, '(.*)');      // Match * wildcard
-        
-        let destination = rule.destination
-          .replace(/:[^/]+/g, '$1')
-          .replace(/\*/g, '$1');
-        
+          .replace(/:[^/]+/g, (match) => {
+            params.push(match.substring(1));
+            return '([^/]+)';
+          })
+          .replace(/\\\*/g, '(.*)');
+
+        const destination = rule.destination.replace(/:[^/]+/g, (match) => {
+          const paramName = match.substring(1);
+          const position = params.indexOf(paramName) + 1;
+          return `$${position}`;
+        }).replace(/\*/g, '$1');
+
         return `
-          if (uri.match(new RegExp('^${source}$'))) {
-            return {
-              statusCode: 301,
-              statusDescription: 'Moved Permanently',
-              headers: {
-                'location': {
-                  value: 'https://' + host + uri.replace(new RegExp('^${source}$'), '${destination}')
+            if (uri.match(new RegExp('^${source}$'))) {
+              return {
+                statusCode: 301,
+                statusDescription: 'Moved Permanently',
+                headers: {
+                  'location': {
+                    value: 'https://' + host + uri.replace(new RegExp('^${source}$'), '${destination}')
+                  }
                 }
-              }
-            };
-          }
+              };
+            }
         `;
       }).join('\n');
 
       // Generate rewrites code
       const rewritesCode = rewrites.map((rule) => {
+        const params: string[] = [];
+
         const source = this.escapeRegex(rule.source)
-          .replace(/:[^/]+/g, '([^/]+)')
-          .replace(/\*/g, '(.*)');
-        
-        let destination = rule.destination
-          .replace(/:[^/]+/g, '$1')
-          .replace(/\*/g, '$1');
+          .replace(/:[^/]+/g, (match) => {
+            params.push(match.substring(1));
+            return '([^/]+)';
+          })
+          .replace(/\\\*/g, '(.*)');
+
+        const destination = rule.destination.replace(/:[^/]+/g, (match) => {
+          const paramName = match.substring(1);
+          const position = params.indexOf(paramName) + 1;
+          return `$${position}`;
+        }).replace(/\*/g, '$1');
         
         return `
           if (uri.match(new RegExp('^${source}$'))) {
