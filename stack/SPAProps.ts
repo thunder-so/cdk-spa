@@ -99,6 +99,11 @@ export interface SPAProps extends StackProps {
     readonly rewrites?: { source: string; destination: string; }[];
 
     /**
+     * Optional: Custom headers
+     */
+    readonly headers?: { name: string; value: string; }[];
+
+    /**
      * Thunder.so platform features. 
      * You can use the stack safely without using these props.
      * - The pipeline events are broadcast using an event bus. Defaults to null.

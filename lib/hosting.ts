@@ -20,6 +20,7 @@ export interface HostingProps {
     hostedZoneId?: string;
     redirects?: { source: string; destination: string; }[];
     rewrites?: { source: string; destination: string; }[];
+    headers?: { name: string; value: string; }[];
 }
 
 export class HostingConstruct extends Construct {
@@ -342,9 +343,15 @@ export class HostingConstruct extends Construct {
                 override: true,
               },
               xssProtection: { protection: true, modeBlock: true, override: true },
-              
             },
-            removeHeaders: ['age' , 'date'],
+            customHeadersBehavior: {
+              customHeaders: props.headers?.map(({ name, value }) => ({
+                header: name,
+                value,
+                override: true,
+              })) || []
+            },
+            removeHeaders: ['server', 'age' , 'date'],
       });
       
       // defaultBehavior

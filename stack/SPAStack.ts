@@ -39,7 +39,8 @@ export class SPAStack extends Stack {
       globalCertificateArn: props.globalCertificateArn as string,
       hostedZoneId: props.hostedZoneId as string,
       redirects: props.redirects,
-      rewrites: props.rewrites
+      rewrites: props.rewrites,
+      headers: props.headers
     });
 
     const pipeline = new PipelineConstruct(this, 'Pipeline', {

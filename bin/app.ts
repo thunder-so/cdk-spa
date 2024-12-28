@@ -23,6 +23,7 @@ const {
   hostedZoneId,
   redirects,
   rewrites,
+  headers,
   eventTarget
 } = metadata;
 
@@ -54,6 +55,7 @@ const appStackProps: SPAProps = {
   hostedZoneId,
   redirects,
   rewrites,
+  headers,
   eventTarget
 };
 

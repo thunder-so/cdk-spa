@@ -71,6 +71,13 @@ const appStackProps: SPAProps = {
   //   }
   // ],
 
+  // "headers": [
+  //     {
+  //       "name": "Cache-Control",
+  //       "value": "public, max-age=31536000" // one year
+  //     }
+  // ],
+
   // Custom Cloudfront Functions
   // edgeFunctionFilePath: 'custom.js',
 
