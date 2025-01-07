@@ -66,7 +66,7 @@ export class HostingConstruct extends Construct {
     constructor(scope: Construct, id: string, props: HostingProps) {
       super(scope, id);
 
-      this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`;
+      this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
 
       this.createHostingBucket(props);
 

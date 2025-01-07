@@ -83,7 +83,7 @@ export class PipelineConstruct extends Construct {
   constructor(scope: Construct, id: string, props: PipelineProps) {
     super(scope, id);
 
-    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`;
+    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
 
     // output bucket
     this.buildOutputBucket = new Bucket(this, "BuildOutputBucket", {
