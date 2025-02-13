@@ -67,11 +67,6 @@ export interface SPAProps extends StackProps {
      *   ]
      */
     readonly buildEnvironmentVariables?: { key: string; resource: string; }[];
-
-    /**
-     * Optional. If you have a custom CloudFront Functions file for your app, provide the relative path to the file.
-     */
-    readonly edgeFunctionFilePath?: string;
    
     /**
      * Optional. The domain (without the protocol) at which the app shall be publicly available.
@@ -101,7 +96,7 @@ export interface SPAProps extends StackProps {
     /**
      * Optional: Custom headers
      */
-    readonly headers?: { name: string; value: string; }[];
+    readonly headers?: { path: string; name: string; value: string; }[];
 
     /**
      * Thunder.so platform features. 

@@ -78,9 +78,6 @@ const appStackProps: SPAProps = {
   //     }
   // ],
 
-  // Custom Cloudfront Functions
-  // edgeFunctionFilePath: 'custom.js',
-
   // all resources created in the stack will be tagged
   // tags: {
   //   key: 'value'

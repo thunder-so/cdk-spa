@@ -6,10 +6,10 @@ import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal, PolicyDo
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Project, PipelineProject, LinuxBuildImage, ComputeType, Source, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
 import { Artifact, Pipeline, PipelineType, Variable } from 'aws-cdk-lib/aws-codepipeline';
-import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction, LambdaInvokeAction } from 'aws-cdk-lib/aws-codepipeline-actions';
+import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
-import { EventBus, Rule, type IRuleTarget, RuleTargetInput, EventField, Connection, Authorization, ApiDestination, HttpMethod } from 'aws-cdk-lib/aws-events';
-import { LambdaFunction as LambdaFunctionTarget, CloudWatchLogGroup, EventBus as EventBusTarget, ApiDestination as ApiDestinationTarget } from 'aws-cdk-lib/aws-events-targets';
+import { EventBus, Rule } from 'aws-cdk-lib/aws-events';
+import { CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-events-targets';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export interface PipelineProps {
@@ -38,7 +38,6 @@ export interface PipelineProps {
     buildcmd: string;
     outputdir: string;
   };
-  // buildEnvironmentVariables?: Record<string, { value: string; type: BuildEnvironmentVariableType.PARAMETER_STORE }>;
   buildEnvironmentVariables: { key: string; resource: string; }[],
 
   // events
@@ -159,7 +158,7 @@ export class PipelineConstruct extends Construct {
       projectName: `${this.resourceIdPrefix}-syncActionProject`,
       buildSpec: buildSpec,
       environment: {
-        buildImage: LinuxBuildImage.STANDARD_5_0,
+        buildImage: LinuxBuildImage.STANDARD_7_0,
         computeType: ComputeType.SMALL,
       },
       role: syncActionRole,
@@ -262,7 +261,6 @@ export class PipelineConstruct extends Construct {
         phases: {
             install: {
                 'runtime-versions': {
-                    // nodejs: props.buildProps?.runtime || '20'
                   [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '20'
                 },
                 commands: [ 

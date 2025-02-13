@@ -213,18 +213,6 @@ The `SPAStack` construct can be configured via the following props:
         <strong>Optional</strong>. Required when domain is provided. The ARN of the certificate to use on CloudFront for the app to make it accessible via HTTPS. The certificate must be issued for the specified domain in us-east-1 (global) regardless of the region specified via 'env.region' as CloudFront only works globally.
       </td>
     </tr>
-    <tr><td colspan=3><small>Edge functions:</small></td></tr>
-    <tr id="constructor-option-functions">
-      <th>
-        <code>edgeFunctionFilePath</code>
-      </th>
-      <th>
-        <code>string</code>
-      </th>
-      <td><strong>Optional</strong>. If you have a custom CloudFront Functions file for your app, provide relative path to the file. E.g. <code>stack/custom.js</code>
-      </td>
-    </tr>
-    <tr>
   </tbody>
 </table>
 
@@ -319,9 +307,6 @@ const appStackProps: SPAProps = {
   },
   // Providing a buildspec.yml will override buildProps and sourceProps.rootdir
   // buildSpecFilePath: 'stack/buildspec.yml',
-
-  // Custom CloudFront Functions
-  // edgeFunctionFilePath: 'stack/custom.js',
 
   // Optional: Domain settings
   // - create a hosted zone for your domain

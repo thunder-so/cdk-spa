@@ -2,25 +2,24 @@ import fs from 'fs';
 import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { PolicyStatement, Effect, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { Role, PolicyStatement, Effect, ServicePrincipal, AnyPrincipal, ManagedPolicy } from "aws-cdk-lib/aws-iam";
 import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, PriceClass, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods, FunctionRuntime } from "aws-cdk-lib/aws-cloudfront";
+import { Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods, FunctionRuntime, LambdaEdgeEventType, experimental } from "aws-cdk-lib/aws-cloudfront";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
-import { createCloudFrontDistributionForS3, type CreateCloudFrontDistributionForS3Props, type CreateCloudFrontDistributionForS3Response } from '@aws-solutions-constructs/core'
+import { Function, Runtime, Code, Version } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
     application: string;
     service: string;
     environment: string;
-    edgeFunctionFilePath?: string;
     domain?: string;
     globalCertificateArn?: string;
     hostedZoneId?: string;
     redirects?: { source: string; destination: string; }[];
     rewrites?: { source: string; destination: string; }[];
-    headers?: { name: string; value: string; }[];
+    headers?: { path: string; name: string; value: string; }[];
 }
 
 export class HostingConstruct extends Construct {
@@ -53,35 +52,86 @@ export class HostingConstruct extends Construct {
     public originAccessControl: CfnOriginAccessControl|undefined;
 
     /**
+     * Lambda@edge Role
+     */
+    private lambdaEdgeRole: Role;
+
+    /**
      * Redirects and Rewrites CloudFront Function
      */
-    private cloudFrontRedirectsRewrites: CloudFrontFunction;
+    private cloudFrontRedirectsRewrites: experimental.EdgeFunction;
+
+    /**
+     * Headers CloudFront Function
+     */
+    private cloudFrontHeaders: experimental.EdgeFunction;
 
     /**
      * The custom CloudFront Functions file provided
      */
-    private cloudFrontFunction: CloudFrontFunction;
-    
+    // private cloudFrontFunction: CloudFrontFunction;
 
     constructor(scope: Construct, id: string, props: HostingProps) {
       super(scope, id);
 
       this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
 
-      this.createHostingBucket(props);
+      // Create the Origin Access Control
+      this.originAccessControl = new CfnOriginAccessControl(this, 'CloudFrontOac', {
+        originAccessControlConfig: {
+          name: `${this.resourceIdPrefix}-OAC`,
+          description: `Origin Access Control for ${this.resourceIdPrefix}`,
+          originAccessControlOriginType: 's3',
+          signingBehavior: 'always',
+          signingProtocol: 'sigv4',
+        },
+      });
 
+      /**
+       * Lambda@edge
+       */
+      // Create the execution role for Lambda@Edge
+      this.lambdaEdgeRole = new Role(this, 'LambdaEdgeExecutionRole', {
+        assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+      });
+
+      this.lambdaEdgeRole.assumeRolePolicy?.addStatements(
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          principals: [new ServicePrincipal('edgelambda.amazonaws.com')],
+          actions: ['sts:AssumeRole'],
+        })
+      );
+
+      this.lambdaEdgeRole.addManagedPolicy(
+        ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+      );
+
+      // Create the redirects and rewrites function
       this.cloudFrontRedirectsRewrites = this.createCloudFrontRedirectsRewrites(props);
 
-      if (props.edgeFunctionFilePath) {
-        this.cloudFrontFunction = this.createCloudFrontFunction(props);
+      // Create the custom response headers function
+      if (props.headers) {
+        this.cloudFrontHeaders = this.createCloudFrontHeaders(props);
       }
 
+      /**
+       * Create the infrastructure
+       */
+      // create the S3 bucket for hosting
+      this.createHostingBucket(props);
+
+      // Create the CloudFront distribution
       this.createCloudfrontDistribution(props);
 
+      // Set the domains with Route53
       if(props.domain && props.globalCertificateArn && props.hostedZoneId) {
         this.createDnsRecords(props);
       }
 
+      /**
+       * Outputs
+       */
       // Create an output for the distribution's physical ID
       new CfnOutput(this, 'DistributionId', {
         value: this.distribution.distributionId,
@@ -98,27 +148,6 @@ export class HostingConstruct extends Construct {
     }
 
     /**
-     * Create a CloudFront Function from edgeFunctionFilePath
-     * @param props HostingProps
-     * @returns cloudfront function
-     */
-    private createCloudFrontFunction(props: HostingProps): CloudFrontFunction {
-      let cloudFrontFunctionCode: string;
-      try {
-        cloudFrontFunctionCode = fs.readFileSync(props.edgeFunctionFilePath as string, "utf8");
-      } catch (error) {
-        throw new Error(`Failed to read CloudFront function file at ${props.edgeFunctionFilePath}: ${error}`);
-      }
-
-      const cloudFrontFunction = new CloudFrontFunction(this, 'CloudFrontFunction', {
-        code: CloudFrontFunctionCode.fromInline(cloudFrontFunctionCode),
-        comment: `CloudFront Function: ${props.edgeFunctionFilePath}`,
-      });
-
-      return cloudFrontFunction;
-    }
-
-    /**
      * Create a CloudFront Function for Redirects and Rewrites
      * @param props HostingProps
      * @returns cloudfront function
@@ -128,7 +157,7 @@ export class HostingConstruct extends Construct {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     };
 
-    private createCloudFrontRedirectsRewrites(props: HostingProps): CloudFrontFunction {
+    private createCloudFrontRedirectsRewrites(props: HostingProps): experimental.EdgeFunction {
       const redirects = props.redirects || [];
       const rewrites = props.rewrites || [];
 
@@ -189,10 +218,10 @@ export class HostingConstruct extends Construct {
       }).join('\n');
 
       const functionCode = `
-        function handler(event) {
-          var request = event.request;
+        exports.handler = async (event) => {
+          const { request, response } = event.Records[0].cf;
           var uri = request.uri;
-          var host = event.context.distributionDomainName;
+          var host = request.headers.host[0].value;
 
           // Handle redirects
           ${redirectsCode}
@@ -210,16 +239,77 @@ export class HostingConstruct extends Construct {
           }
 
           return request;
-        }
+        };
       `;
 
-      const cloudFrontRedirectsRewrites = new CloudFrontFunction(this, 'RedirectsRewritesFunction', {
-        code: CloudFrontFunctionCode.fromInline(functionCode),
-        comment: `CloudFront Function: for SPA Redirects and Rewrites`,
-        runtime: FunctionRuntime.JS_2_0
+      const cloudFrontRedirectsRewrites = new experimental.EdgeFunction(this, 'RedirectRewriteFunction', {
+        code: Code.fromInline(functionCode),
+        runtime: Runtime.NODEJS_18_X,
+        handler: 'index.handler',
+        role: this.lambdaEdgeRole
       });
 
       return cloudFrontRedirectsRewrites;
+    }
+
+    /**
+     * Create a CloudFront Function for Custom Headers
+     * @param props HostingProps
+     * @returns cloudfront function
+     */
+    private createCloudFrontHeaders(props: HostingProps): experimental.EdgeFunction {
+      const headers = props.headers || [];
+    
+      // Generate the Lambda function code with the headers embedded
+      const functionCode = `
+        exports.handler = async (event) => {
+          const { request, response } = event.Records[0].cf;
+          const uri = request.uri;
+
+          const headersConfig = ${JSON.stringify(headers)};
+
+          const convertPathToRegex = (pattern) => {
+            // First handle the file extension pattern with braces
+            let regex = pattern.replace(/{([^}]+)}/g, (match, group) => {
+              return '(' + group.split(',').join('|') + ')';
+            });
+            
+            // Replace * with non-greedy match that doesn't include slashes
+            regex = regex.replace(/\\*/g, '[^/]*');
+            
+            // Escape special characters in the pattern, preserving forward slashes
+            regex = regex.split('/').map(part => 
+              part.replace(/[.+^$()|\[\]]/g, '\\$&')
+            ).join('/');
+            
+            console.log("regex", regex);
+            return regex;
+          };
+
+          headersConfig.forEach((header) => {
+            const regex = new RegExp(convertPathToRegex(header.path));
+            if (regex.test(uri)) {
+              console.log(\`Applying header: \${header.name} with value: \${header.value} for pattern: \${header.path}\`);
+              const headerName = header.name.toLowerCase();
+              const headerValue = header.value;
+              response.headers[headerName] = [{ key: header.name, value: headerValue }];
+            }
+          });
+
+          return response;
+        };
+      `;
+    
+      // Create and return the Edge Function
+      const cloudFrontHeadersFunction = new experimental.EdgeFunction(this, 'HeadersFunction', {
+        code: Code.fromInline(functionCode),
+        runtime: Runtime.NODEJS_18_X,
+        handler: 'index.handler',
+        role: this.lambdaEdgeRole
+      });
+
+      // Create a version for Lambda@Edge
+      return cloudFrontHeadersFunction;
     }
 
     /**
@@ -231,36 +321,60 @@ export class HostingConstruct extends Construct {
 
         // Hosting bucket access log bucket
         const originLogsBucket = new Bucket(this, "OriginLogsBucket", {
-            bucketName: `${this.resourceIdPrefix}-origin-logs`,
-            encryption: BucketEncryption.S3_MANAGED,
-            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-            objectOwnership: ObjectOwnership.OBJECT_WRITER,
-            enforceSSL: true,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true
+          bucketName: `${this.resourceIdPrefix}-origin-logs`,
+          encryption: BucketEncryption.S3_MANAGED,
+          blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+          objectOwnership: ObjectOwnership.OBJECT_WRITER,
+          enforceSSL: true,
+          removalPolicy: RemovalPolicy.DESTROY,
+          autoDeleteObjects: true
         });
 
         // primary hosting bucket
         const bucket = new Bucket(this, "HostingBucket", {
-            bucketName: `${this.resourceIdPrefix}-hosting`,
-            versioned: true,
-            serverAccessLogsBucket: originLogsBucket,
-            enforceSSL: true,
-            encryption: BucketEncryption.S3_MANAGED,
-            blockPublicAccess: new BlockPublicAccess({
-              blockPublicPolicy: true,
-              blockPublicAcls: true,
-              ignorePublicAcls: true,
-              restrictPublicBuckets: true,
-            }),
-            removalPolicy: RemovalPolicy.RETAIN
+          bucketName: `${this.resourceIdPrefix}-hosting`,
+          versioned: true,
+          serverAccessLogsBucket: originLogsBucket,
+          enforceSSL: true,
+          encryption: BucketEncryption.S3_MANAGED,
+          blockPublicAccess: new BlockPublicAccess({
+            blockPublicPolicy: true,
+            blockPublicAcls: true,
+            ignorePublicAcls: true,
+            restrictPublicBuckets: true,
+          }),
+          removalPolicy: RemovalPolicy.RETAIN
         });
 
         // Setting the origin to HTTP server
         this.s3Origin = new S3Origin(bucket, {
           connectionAttempts: 2,
-          connectionTimeout: Duration.seconds(3)
+          connectionTimeout: Duration.seconds(3),
+          originId: `${this.resourceIdPrefix}-s3origin`
         });
+
+        // Update the bucket policy to allow access from the OAC
+        bucket.addToResourcePolicy(
+          new PolicyStatement({
+            effect: Effect.ALLOW,
+            actions: ['s3:GetObject'],
+            principals: [new AnyPrincipal()],
+            resources: [`${bucket.bucketArn}/*`],
+            conditions: {
+              StringEquals: {
+                'AWS:SourceArn': `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:origin-access-control/${this.originAccessControl?.attrId}`,
+                'aws:SourceAccount': Aws.ACCOUNT_ID,
+              },
+            },
+          })
+        );
+
+        // Give the edge lambdas permission to access hosting bucket
+        this.lambdaEdgeRole.addToPolicy(new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ['s3:GetObject'],
+          resources: [`${bucket.bucketArn}/*`],
+        }));
 
         this.hostingBucket = bucket;
     }
@@ -274,114 +388,122 @@ export class HostingConstruct extends Construct {
 
         // access logs bucket
         const accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
-            bucketName: `${this.resourceIdPrefix}-access-logs`,
-            encryption: BucketEncryption.S3_MANAGED,
-            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-            objectOwnership: ObjectOwnership.OBJECT_WRITER,
-            enforceSSL: true,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true
+          bucketName: `${this.resourceIdPrefix}-access-logs`,
+          encryption: BucketEncryption.S3_MANAGED,
+          blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+          objectOwnership: ObjectOwnership.OBJECT_WRITER,
+          enforceSSL: true,
+          removalPolicy: RemovalPolicy.DESTROY,
+          autoDeleteObjects: true
         });
         this.accessLogsBucket = accessLogsBucket;
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
           cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`,
-          comment: "Default policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
-          defaultTtl: Duration.days(365),
-          minTtl: Duration.days(365),
-          maxTtl: Duration.days(365),
-          cookieBehavior: CacheCookieBehavior.none(),
+          comment: 'Cache policy for HTML documents with short TTL',
+          defaultTtl: Duration.minutes(1),
+          minTtl: Duration.seconds(0),
+          maxTtl: Duration.minutes(1),
           headerBehavior: CacheHeaderBehavior.none(),
+          cookieBehavior: CacheCookieBehavior.none(),
           queryStringBehavior: CacheQueryStringBehavior.none(),
           enableAcceptEncodingGzip: true,
           enableAcceptEncodingBrotli: true,
         });
         
-        // imgCachePolicy
-        const imgCachePolicy = new CachePolicy(this, "ImagesCachePolicy", {
-          cachePolicyName: `${this.resourceIdPrefix}-ImagesCachePolicy`,
-          comment: "Images cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
-          defaultTtl: Duration.days(365),
-          minTtl: Duration.days(365),
-          maxTtl: Duration.days(365),
-          cookieBehavior: CacheCookieBehavior.none(),
-          headerBehavior: CacheHeaderBehavior.none(),
-          queryStringBehavior: CacheQueryStringBehavior.none(),
-        });
-        
-        // staticAssetsCachePolicy
-        const staticAssetsCachePolicy = new CachePolicy(this, "StaticAssetsCachePolicy", {
+        const staticAssetsCachePolicy = new CachePolicy(this, 'StaticAssetsCachePolicy', {
           cachePolicyName: `${this.resourceIdPrefix}-StaticAssetsCachePolicy`,
-          comment: "Static assets cache policy - " + Aws.STACK_NAME + "-" + Aws.REGION,
+          comment: 'Cache policy for static assets with long TTL',
           defaultTtl: Duration.days(365),
-          minTtl: Duration.days(365),
+          minTtl: Duration.days(1),
           maxTtl: Duration.days(365),
-          cookieBehavior: CacheCookieBehavior.none(),
           headerBehavior: CacheHeaderBehavior.none(),
+          cookieBehavior: CacheCookieBehavior.none(),
           queryStringBehavior: CacheQueryStringBehavior.none(),
+          enableAcceptEncodingGzip: true,
+          enableAcceptEncodingBrotli: true,
         });
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
             responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
             comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
-            securityHeadersBehavior: {
-              contentTypeOptions: { override: true },
+            securityHeadersBehavior: {              
+              contentSecurityPolicy: {
+                contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+                override: true,
+              },
+              strictTransportSecurity: {
+                accessControlMaxAge: Duration.days(365),
+                includeSubdomains: true,
+                preload: true,
+                override: true,
+              },
+              contentTypeOptions: {
+                override: true,
+              },
+              referrerPolicy: {
+                referrerPolicy: HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+                override: true,
+              },
               frameOptions: {
                 frameOption: HeadersFrameOption.DENY,
                 override: true,
               },
-              referrerPolicy: {
-                referrerPolicy:
-                  HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-                override: false,
-              },
-              strictTransportSecurity: {
-                accessControlMaxAge: Duration.seconds(31536000),
-                includeSubdomains: true,
-                override: true,
-              },
-              xssProtection: { protection: true, modeBlock: true, override: true },
+              xssProtection: { 
+                protection: true, 
+                modeBlock: true, 
+                override: true 
+              }
             },
-            customHeadersBehavior: {
-              customHeaders: props.headers?.map(({ name, value }) => ({
-                header: name,
-                value,
-                override: true,
-              })) || []
+            corsBehavior: {
+              accessControlAllowCredentials: false,
+              accessControlAllowHeaders: ['*'],
+              accessControlAllowMethods: ['GET', 'HEAD', 'OPTIONS'],
+              accessControlAllowOrigins: ['*'],
+              accessControlExposeHeaders: [],
+              accessControlMaxAge: Duration.seconds(600),
+              originOverride: true,
             },
+            // customHeadersBehavior: {
+            //   customHeaders: props.headers?.map(({ name, value }) => ({
+            //     header: name,
+            //     value,
+            //     override: true,
+            //   })) || []
+            // },
             removeHeaders: ['server', 'age' , 'date'],
       });
       
       // defaultBehavior
       const defaultBehavior: BehaviorOptions = {
           origin: this.s3Origin,
+          compress: true,
           responseHeadersPolicy: responseHeadersPolicy,
           cachePolicy: defaultCachePolicy,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          functionAssociations: [
+          // functionAssociations: [
+          //   ...(this.cloudFrontRedirectsRewrites ? [{
+          //     eventType: FunctionEventType.VIEWER_REQUEST,
+          //     function: this.cloudFrontRedirectsRewrites
+          //   }] : []),
+          //   ...(this.cloudFrontFunction ? [{
+          //       eventType: FunctionEventType.VIEWER_REQUEST,
+          //       function: this.cloudFrontFunction
+          //   }] : [])
+          // ],
+          edgeLambdas: [
             ...(this.cloudFrontRedirectsRewrites ? [{
-              eventType: FunctionEventType.VIEWER_REQUEST,
-              function: this.cloudFrontRedirectsRewrites
-          }] : []),
-            ...(this.cloudFrontFunction ? [{
-                eventType: FunctionEventType.VIEWER_REQUEST,
-                function: this.cloudFrontFunction
-            }] : [])
+              eventType: LambdaEdgeEventType.VIEWER_REQUEST,
+              functionVersion: this.cloudFrontRedirectsRewrites.currentVersion,
+            }] : []),
+            ...(this.cloudFrontHeaders ? [{
+              eventType: LambdaEdgeEventType.VIEWER_RESPONSE,
+              functionVersion: this.cloudFrontHeaders.currentVersion,
+            }] : []),
           ],
-      };
-
-      // imgBehaviour
-      const imgBehaviour: BehaviorOptions = {
-        origin: this.s3Origin,
-        compress: true,
-        responseHeadersPolicy: responseHeadersPolicy,
-        cachePolicy: imgCachePolicy,
-        allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        cachedMethods: CachedMethods.CACHE_GET_HEAD_OPTIONS,
-        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS
       };
 
       // staticAssetsBehaviour
@@ -404,16 +526,15 @@ export class HostingConstruct extends Construct {
           logBucket: this.accessLogsBucket,
           defaultBehavior: defaultBehavior,
           additionalBehaviors: {
-            "*.jpg": imgBehaviour,
-            "*.jpeg": imgBehaviour,
-            "*.png": imgBehaviour,
-            "*.gif": imgBehaviour,
-            "*.bmp": imgBehaviour,
-            "*.tiff": imgBehaviour,
-            "*.ico": imgBehaviour,
+            "*.jpg": staticAssetsBehaviour,
+            "*.jpeg": staticAssetsBehaviour,
+            "*.png": staticAssetsBehaviour,
+            "*.gif": staticAssetsBehaviour,
+            "*.bmp": staticAssetsBehaviour,
+            "*.tiff": staticAssetsBehaviour,
+            "*.ico": staticAssetsBehaviour,
             "*.js": staticAssetsBehaviour,
-            "*.css": staticAssetsBehaviour,
-            "*.html": staticAssetsBehaviour,
+            "*.css": staticAssetsBehaviour
           },
           responseHeadersPolicy: responseHeadersPolicy,
           httpVersion: HttpVersion.HTTP2_AND_3,
@@ -423,8 +544,15 @@ export class HostingConstruct extends Construct {
             {
               httpStatus: 403,
               responseHttpStatus: 200,
+              ttl: Duration.seconds(0),
               responsePagePath: '/index.html',
-            }
+            },
+            {
+              httpStatus: 404,
+              responseHttpStatus: 200,
+              ttl: Duration.seconds(0),
+              responsePagePath: '/index.html',
+            },
           ],
           ...(props.domain && props.globalCertificateArn
             ? {
@@ -434,19 +562,8 @@ export class HostingConstruct extends Construct {
             : {}),
         }
 
-        // Define the CloudFront distribution using `createCloudFrontDistributionForS3`
-        const cloudFrontDistributionProps: CreateCloudFrontDistributionForS3Props = {
-          sourceBucket: this.hostingBucket,
-          cloudFrontDistributionProps: distributionProps,
-          httpSecurityHeaders: true
-        };
-
         // Creating CloudFront distribution
-        // this.distribution = new Distribution(this, distributionName, distributionProps);
-        const cloudFrontDistributionForS3Response: CreateCloudFrontDistributionForS3Response = createCloudFrontDistributionForS3(this, distributionName, cloudFrontDistributionProps);
-
-        this.distribution = cloudFrontDistributionForS3Response.distribution;
-        this.originAccessControl = cloudFrontDistributionForS3Response.originAccessControl;
+        this.distribution = new Distribution(this, distributionName, distributionProps);
 
         // Grant CloudFront permission to get the objects from the s3 bucket origin
         this.hostingBucket.addToResourcePolicy(
