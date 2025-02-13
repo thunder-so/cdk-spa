@@ -282,14 +282,12 @@ export class HostingConstruct extends Construct {
               part.replace(/[.+^$()|\[\]]/g, '\\$&')
             ).join('/');
             
-            console.log("regex", regex);
             return regex;
           };
 
           headersConfig.forEach((header) => {
             const regex = new RegExp(convertPathToRegex(header.path));
             if (regex.test(uri)) {
-              console.log(\`Applying header: \${header.name} with value: \${header.value} for pattern: \${header.path}\`);
               const headerName = header.name.toLowerCase();
               const headerValue = header.value;
               response.headers[headerName] = [{ key: header.name, value: headerValue }];
