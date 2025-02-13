@@ -8,7 +8,7 @@ import { Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, 
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
-import { Function, Runtime, Code, Version } from 'aws-cdk-lib/aws-lambda';
+import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
     application: string;
@@ -387,7 +387,7 @@ export class HostingConstruct extends Construct {
     private createCloudfrontDistribution(props: HostingProps) {
 
         // access logs bucket
-        const accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
+        this.accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
           bucketName: `${this.resourceIdPrefix}-access-logs`,
           encryption: BucketEncryption.S3_MANAGED,
           blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -396,7 +396,6 @@ export class HostingConstruct extends Construct {
           removalPolicy: RemovalPolicy.DESTROY,
           autoDeleteObjects: true
         });
-        this.accessLogsBucket = accessLogsBucket;
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
@@ -427,73 +426,59 @@ export class HostingConstruct extends Construct {
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
-            responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
-            comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
-            securityHeadersBehavior: {              
-              contentSecurityPolicy: {
-                contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
-                override: true,
-              },
-              strictTransportSecurity: {
-                accessControlMaxAge: Duration.days(365),
-                includeSubdomains: true,
-                preload: true,
-                override: true,
-              },
-              contentTypeOptions: {
-                override: true,
-              },
-              referrerPolicy: {
-                referrerPolicy: HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-                override: true,
-              },
-              frameOptions: {
-                frameOption: HeadersFrameOption.DENY,
-                override: true,
-              },
-              xssProtection: { 
-                protection: true, 
-                modeBlock: true, 
-                override: true 
-              }
+          responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
+          comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
+          securityHeadersBehavior: {              
+            contentSecurityPolicy: {
+              contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+              override: true,
             },
-            corsBehavior: {
-              accessControlAllowCredentials: false,
-              accessControlAllowHeaders: ['*'],
-              accessControlAllowMethods: ['GET', 'HEAD', 'OPTIONS'],
-              accessControlAllowOrigins: ['*'],
-              accessControlExposeHeaders: [],
-              accessControlMaxAge: Duration.seconds(600),
-              originOverride: true,
+            strictTransportSecurity: {
+              accessControlMaxAge: Duration.days(365),
+              includeSubdomains: true,
+              preload: true,
+              override: true,
             },
-            // customHeadersBehavior: {
-            //   customHeaders: props.headers?.map(({ name, value }) => ({
-            //     header: name,
-            //     value,
-            //     override: true,
-            //   })) || []
-            // },
-            removeHeaders: ['server', 'age' , 'date'],
-      });
+            contentTypeOptions: {
+              override: true,
+            },
+            referrerPolicy: {
+              referrerPolicy: HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+              override: true,
+            },
+            frameOptions: {
+              frameOption: HeadersFrameOption.DENY,
+              override: true,
+            },
+            xssProtection: { 
+              protection: true, 
+              modeBlock: true, 
+              override: true 
+            }
+          },
+          corsBehavior: {
+            accessControlAllowCredentials: false,
+            accessControlAllowHeaders: ['*'],
+            accessControlAllowMethods: ['GET', 'HEAD', 'OPTIONS'],
+            accessControlAllowOrigins: ['*'],
+            accessControlExposeHeaders: [],
+            accessControlMaxAge: Duration.seconds(600),
+            originOverride: true,
+          },
+          customHeadersBehavior: {
+            customHeaders: []
+          },
+          removeHeaders: ['server', 'age' , 'date'],
+        });
       
-      // defaultBehavior
-      const defaultBehavior: BehaviorOptions = {
+        // defaultBehavior
+        const defaultBehavior: BehaviorOptions = {
           origin: this.s3Origin,
           compress: true,
           responseHeadersPolicy: responseHeadersPolicy,
           cachePolicy: defaultCachePolicy,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          // functionAssociations: [
-          //   ...(this.cloudFrontRedirectsRewrites ? [{
-          //     eventType: FunctionEventType.VIEWER_REQUEST,
-          //     function: this.cloudFrontRedirectsRewrites
-          //   }] : []),
-          //   ...(this.cloudFrontFunction ? [{
-          //       eventType: FunctionEventType.VIEWER_REQUEST,
-          //       function: this.cloudFrontFunction
-          //   }] : [])
-          // ],
           edgeLambdas: [
             ...(this.cloudFrontRedirectsRewrites ? [{
               eventType: LambdaEdgeEventType.VIEWER_REQUEST,
@@ -504,18 +489,18 @@ export class HostingConstruct extends Construct {
               functionVersion: this.cloudFrontHeaders.currentVersion,
             }] : []),
           ],
-      };
+        };
 
-      // staticAssetsBehaviour
-      const staticAssetsBehaviour: BehaviorOptions = {
-        origin: this.s3Origin,
-        compress: true,
-        responseHeadersPolicy: responseHeadersPolicy,
-        cachePolicy: staticAssetsCachePolicy,
-        allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        cachedMethods: CachedMethods.CACHE_GET_HEAD_OPTIONS,
-        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS
-      };
+        // staticAssetsBehaviour
+        const staticAssetsBehaviour: BehaviorOptions = {
+          origin: this.s3Origin,
+          compress: true,
+          responseHeadersPolicy: responseHeadersPolicy,
+          cachePolicy: staticAssetsCachePolicy,
+          allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+          cachedMethods: CachedMethods.CACHE_GET_HEAD_OPTIONS,
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        };
 
         // finally, create distribution
         const distributionName = `${this.resourceIdPrefix}-cdn`;
