@@ -1,6 +1,12 @@
 import {type StackProps} from "aws-cdk-lib";
 
 export interface SPAProps extends StackProps {
+
+    /**
+     * Debug
+     */
+    readonly debug: boolean;
+
     /**
      * The AWS environment (account/region) where this stack will be deployed.
      */

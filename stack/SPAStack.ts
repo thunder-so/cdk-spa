@@ -31,6 +31,7 @@ export class SPAStack extends Stack {
     // });
 
     const hosting = new HostingConstruct(this, 'Hosting', {
+      debug: props.debug,
       application: props.application,
       environment: props.environment,
       service: props.service,

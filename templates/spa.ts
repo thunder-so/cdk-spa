@@ -2,6 +2,8 @@ import { App } from "aws-cdk-lib";
 import { SPAStack, type SPAProps } from "@thunderso/cdk-spa";
 
 const appStackProps: SPAProps = {
+  debug: true,
+  
   env: {
     account: 'your-account-id',
     region: 'us-east-1'

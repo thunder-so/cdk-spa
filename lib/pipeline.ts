@@ -13,6 +13,7 @@ import { CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export interface PipelineProps {
+  debug?: boolean;
   HostingBucket: IBucket;
   Distribution: IDistribution;
 
@@ -230,16 +231,20 @@ export class PipelineConstruct extends Construct {
    */
   private createBuildProject(props: PipelineProps): Project {
 
+    let buildLogsBucket: Bucket | undefined;
+
     // build logs bucket
-    const buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
-      bucketName: `${this.resourceIdPrefix}-build-logs`,
-      encryption: BucketEncryption.S3_MANAGED,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      objectOwnership: ObjectOwnership.OBJECT_WRITER,
-      enforceSSL: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    if (props.debug) {
+      buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
+        bucketName: `${this.resourceIdPrefix}-build-logs`,
+        encryption: BucketEncryption.S3_MANAGED,
+        blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+        objectOwnership: ObjectOwnership.OBJECT_WRITER,
+        enforceSSL: true,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      });
+    }
 
     // Read the buildspec.yml file
     let buildSpecYaml;
@@ -298,11 +303,11 @@ export class PipelineConstruct extends Construct {
         privileged: true,
       },
       environmentVariables: buildEnvironmentVariables,
-      logging: {
+      logging: props.debug && buildLogsBucket ? {
         s3: {
-          bucket: buildLogsBucket
-        }
-      }
+          bucket: buildLogsBucket,
+        },
+      } : undefined,
     });
 
     // allow project to get secrets
@@ -336,6 +341,11 @@ export class PipelineConstruct extends Construct {
     // Grant project read/write permissions on hosting bucket
     props.HostingBucket.grantReadWrite(project.grantPrincipal);
 
+    // Grant permissions if logging is enabled
+    if (props.debug && buildLogsBucket) {
+      buildLogsBucket.grantWrite(project.grantPrincipal);
+    }
+
     return project;
   }
 
@@ -346,15 +356,19 @@ export class PipelineConstruct extends Construct {
    */
   private createPipeline(props: PipelineProps): Pipeline {
 
+    let artifactBucket: Bucket | undefined;
+
     // build artifact bucket
-    const artifactBucket = new Bucket(this, "ArtifactBucket", {
-      bucketName: `${this.resourceIdPrefix}-artifacts`,
-      encryption: BucketEncryption.S3_MANAGED,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
+    if (props.debug) {
+      artifactBucket = new Bucket(this, "ArtifactBucket", {
+        bucketName: `${this.resourceIdPrefix}-artifacts`,
+        encryption: BucketEncryption.S3_MANAGED,
+        blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+        enforceSSL: true,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      });
+    }
 
     // setup the pipeline
     const pipeline = new Pipeline(this, "Pipeline", {
@@ -374,14 +388,16 @@ export class PipelineConstruct extends Construct {
     );
 
     // Allow pipeline to read from the artifact bucket
-    artifactBucket.addToResourcePolicy(
-      new PolicyStatement({
-        effect: Effect.ALLOW,
-        actions: ["s3:GetObject"],
-        resources: [`${artifactBucket.bucketArn}/*`],
-        principals: [new ArnPrincipal(pipeline.role.roleArn)],
-      })
-    );
+    if (props.debug && artifactBucket) {
+      artifactBucket.addToResourcePolicy(
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ["s3:GetObject"],
+          resources: [`${artifactBucket.bucketArn}/*`],
+          principals: [new ArnPrincipal(pipeline.role.roleArn)],
+        })
+      );
+    }
 
     // Allow pipeline to write to the build output bucket
     this.buildOutputBucket.addToResourcePolicy(
@@ -501,25 +517,27 @@ export class PipelineConstruct extends Construct {
       }
     });
 
-    // Create a CloudWatch Log Group for debugging
-    const logGroup = new LogGroup(this, 'EventsLogGroup', {
-      logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
-      removalPolicy: RemovalPolicy.DESTROY,
-      retention: RetentionDays.ONE_YEAR
-    });
+    if (props.debug) {
+      // Create a CloudWatch Log Group for debugging
+      const logGroup = new LogGroup(this, 'EventsLogGroup', {
+        logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
+        removalPolicy: RemovalPolicy.DESTROY,
+        retention: RetentionDays.ONE_YEAR
+      });
 
-    // Create IAM role for log group
-    const logGroupEventRole = new Role(this, 'LogGroupEventRole', {
-      assumedBy: new ServicePrincipal('events.amazonaws.com'),
-      roleName: `${this.resourceIdPrefix}-LogGroupEventRole`,
-      description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
-    });
+      // Create IAM role for log group
+      const logGroupEventRole = new Role(this, 'LogGroupEventRole', {
+        assumedBy: new ServicePrincipal('events.amazonaws.com'),
+        roleName: `${this.resourceIdPrefix}-LogGroupEventRole`,
+        description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
+      });
 
-    // Grant the role permission to write to the log group
-    logGroup.grantWrite(logGroupEventRole);
+      // Grant the role permission to write to the log group
+      logGroup.grantWrite(logGroupEventRole);
 
-    // Add the log group as a target
-    rule.addTarget(new CloudWatchLogGroup(logGroup));
+      // Add the log group as a target
+      rule.addTarget(new CloudWatchLogGroup(logGroup));
+    }
 
     // Create IAM role for cross-account event bus access
     const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {

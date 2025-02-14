@@ -10,6 +10,7 @@ if (!metadata) {
 }
 
 const {
+  debug,
   env,
   application,
   service,
@@ -28,6 +29,7 @@ const {
 } = metadata;
 
 const appStackProps: SPAProps = {
+  debug,
   env: {
     account: env.account,
     region: env.region

@@ -11,6 +11,7 @@ import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
+    debug?: boolean;
     application: string;
     service: string;
     environment: string;
@@ -180,7 +181,6 @@ export class HostingConstruct extends Construct {
 
         return `
             if (uri.match(new RegExp('^${source}$'))) {
-              console.log("Matched redirect rule: ${source} -> ${destination}");
               const response = {
                 status: '301',
                 statusDescription: 'Moved Permanently',
@@ -323,17 +323,20 @@ export class HostingConstruct extends Construct {
      * @private
      */
     private createHostingBucket(props: HostingProps) {
+        let originLogsBucket: Bucket | undefined;
 
         // Hosting bucket access log bucket
-        const originLogsBucket = new Bucket(this, "OriginLogsBucket", {
-          bucketName: `${this.resourceIdPrefix}-origin-logs`,
-          encryption: BucketEncryption.S3_MANAGED,
-          blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-          objectOwnership: ObjectOwnership.OBJECT_WRITER,
-          enforceSSL: true,
-          removalPolicy: RemovalPolicy.DESTROY,
-          autoDeleteObjects: true
-        });
+        if (props.debug) {
+          originLogsBucket = new Bucket(this, "OriginLogsBucket", {
+            bucketName: `${this.resourceIdPrefix}-origin-logs`,
+            encryption: BucketEncryption.S3_MANAGED,
+            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+            objectOwnership: ObjectOwnership.OBJECT_WRITER,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true
+          });
+        }
 
         // primary hosting bucket
         const bucket = new Bucket(this, "HostingBucket", {
@@ -392,15 +395,17 @@ export class HostingConstruct extends Construct {
     private createCloudfrontDistribution(props: HostingProps) {
 
         // access logs bucket
-        this.accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
-          bucketName: `${this.resourceIdPrefix}-access-logs`,
-          encryption: BucketEncryption.S3_MANAGED,
-          blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-          objectOwnership: ObjectOwnership.OBJECT_WRITER,
-          enforceSSL: true,
-          removalPolicy: RemovalPolicy.DESTROY,
-          autoDeleteObjects: true
-        });
+        if (props.debug) {
+          this.accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
+            bucketName: `${this.resourceIdPrefix}-access-logs`,
+            encryption: BucketEncryption.S3_MANAGED,
+            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+            objectOwnership: ObjectOwnership.OBJECT_WRITER,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true
+          });
+        }
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
@@ -512,8 +517,8 @@ export class HostingConstruct extends Construct {
 
         const distributionProps = {
           comment: "Stack name: " + Aws.STACK_NAME,
-          enableLogging: true,
-          logBucket: this.accessLogsBucket,
+          enableLogging: props.debug ? true : false,
+          logBucket: props.debug ? this.accessLogsBucket : undefined,
           defaultBehavior: defaultBehavior,
           additionalBehaviors: {
             "*.jpg": staticAssetsBehaviour,
