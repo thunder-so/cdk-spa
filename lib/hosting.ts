@@ -180,15 +180,20 @@ export class HostingConstruct extends Construct {
 
         return `
             if (uri.match(new RegExp('^${source}$'))) {
-              return {
-                statusCode: 301,
+              console.log("Matched redirect rule: ${source} -> ${destination}");
+              const response = {
+                status: '301',
                 statusDescription: 'Moved Permanently',
                 headers: {
-                  'location': {
+                  'location': [{
+                    key: 'Location',
                     value: 'https://' + host + uri.replace(new RegExp('^${source}$'), '${destination}')
-                  }
-                }
+                  }]
+                },
               };
+
+              callback(null, response);
+              return;
             }
         `;
       }).join('\n');
@@ -218,8 +223,10 @@ export class HostingConstruct extends Construct {
       }).join('\n');
 
       const functionCode = `
-        exports.handler = async (event) => {
-          const { request, response } = event.Records[0].cf;
+        'use strict';
+
+        exports.handler = (event, context, callback) => {
+          const request = event.Records[0].cf.request;
           var uri = request.uri;
           var host = request.headers.host[0].value;
 
@@ -238,7 +245,7 @@ export class HostingConstruct extends Construct {
               request.uri += '/index.html';
           }
 
-          return request;
+          callback(null, request);
         };
       `;
 
