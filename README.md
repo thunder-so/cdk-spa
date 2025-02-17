@@ -172,7 +172,7 @@ The `SPAStack` construct can be configured via the following props:
         <strong>Required</strong> if <code>buildSpecFilePath</code> is blank. 
         <ul>
           <li><code>runtime: string;</code></li>
-          <li><code>runtime_version: string;</code></li>
+          <li><code>runtime_version: string|number;</code></li>
           <li><code>installcmd: string;</code></li>
           <li><code>buildcmd: string;</code></li>
           <li><code>outputdir: string;</code></li>

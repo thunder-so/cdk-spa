@@ -1,4 +1,3 @@
-import fs from 'fs';
 import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
@@ -440,7 +439,7 @@ export class HostingConstruct extends Construct {
           comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           securityHeadersBehavior: {              
             contentSecurityPolicy: {
-              contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+              contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
               override: true,
             },
             strictTransportSecurity: {

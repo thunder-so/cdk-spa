@@ -40,9 +40,9 @@ const appStackProps: SPAProps = {
   // Optional: Domain settings
   // - create a hosted zone for your domain
   // - issue a global tls certificate in us-east-1 
-  domain: 'example.com',
-  hostedZoneId: 'Z1D633PJRANDOM',
-  globalCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abcd1234-abcd-1234-abcd-1234abcd1234',
+  // domain: 'example.com',
+  // hostedZoneId: 'Z1D633PJRANDOM',
+  // globalCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abcd1234-abcd-1234-abcd-1234abcd1234',
 
   // Custom buildtime environment variables
   // buildEnvironmentVariables: [
@@ -75,6 +75,7 @@ const appStackProps: SPAProps = {
 
   // "headers": [
   //     {
+  //       "path": "/*",
   //       "name": "Cache-Control",
   //       "value": "public, max-age=31536000" // one year
   //     }
