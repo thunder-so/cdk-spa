@@ -11,9 +11,7 @@ import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
     debug?: boolean;
-    application: string;
-    service: string;
-    environment: string;
+    resourceIdPrefix: string;
     domain?: string;
     globalCertificateArn?: string;
     hostedZoneId?: string;
@@ -23,8 +21,6 @@ export interface HostingProps {
 }
 
 export class HostingConstruct extends Construct {
-
-    private resourceIdPrefix: string;
 
     /**
      * The S3 bucket where the deployment assets gets stored.
@@ -66,21 +62,15 @@ export class HostingConstruct extends Construct {
      */
     private cloudFrontHeaders: experimental.EdgeFunction;
 
-    /**
-     * The custom CloudFront Functions file provided
-     */
-    // private cloudFrontFunction: CloudFrontFunction;
 
     constructor(scope: Construct, id: string, props: HostingProps) {
       super(scope, id);
 
-      this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
-
       // Create the Origin Access Control
       this.originAccessControl = new CfnOriginAccessControl(this, 'CloudFrontOac', {
         originAccessControlConfig: {
-          name: `${this.resourceIdPrefix}-OAC`,
-          description: `Origin Access Control for ${this.resourceIdPrefix}`,
+          name: `${props.resourceIdPrefix}-OAC`,
+          description: `Origin Access Control for ${props.resourceIdPrefix}`,
           originAccessControlOriginType: 's3',
           signingBehavior: 'always',
           signingProtocol: 'sigv4',
@@ -136,14 +126,14 @@ export class HostingConstruct extends Construct {
       new CfnOutput(this, 'DistributionId', {
         value: this.distribution.distributionId,
         description: 'The ID of the CloudFront distribution',
-        exportName: `${this.resourceIdPrefix}-CloudFrontDistributionId`,
+        exportName: `${props.resourceIdPrefix}-CloudFrontDistributionId`,
       });
 
       // Create an output for the distribution's URL
       new CfnOutput(this, 'DistributionUrl', {
         value: `https://${this.distribution.distributionDomainName}`,
         description: 'The URL of the CloudFront distribution',
-        exportName: `${this.resourceIdPrefix}-CloudFrontDistributionUrl`,
+        exportName: `${props.resourceIdPrefix}-CloudFrontDistributionUrl`,
       });
     }
 
@@ -327,7 +317,7 @@ export class HostingConstruct extends Construct {
         // Hosting bucket access log bucket
         if (props.debug) {
           originLogsBucket = new Bucket(this, "OriginLogsBucket", {
-            bucketName: `${this.resourceIdPrefix}-origin-logs`,
+            bucketName: `${props.resourceIdPrefix}-origin-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -339,7 +329,7 @@ export class HostingConstruct extends Construct {
 
         // primary hosting bucket
         const bucket = new Bucket(this, "HostingBucket", {
-          bucketName: `${this.resourceIdPrefix}-hosting`,
+          bucketName: `${props.resourceIdPrefix}-hosting`,
           versioned: true,
           serverAccessLogsBucket: originLogsBucket,
           enforceSSL: true,
@@ -357,7 +347,7 @@ export class HostingConstruct extends Construct {
         this.s3Origin = new S3Origin(bucket, {
           connectionAttempts: 2,
           connectionTimeout: Duration.seconds(3),
-          originId: `${this.resourceIdPrefix}-s3origin`
+          originId: `${props.resourceIdPrefix}-s3origin`
         });
 
         // Update the bucket policy to allow access from the OAC
@@ -396,7 +386,7 @@ export class HostingConstruct extends Construct {
         // access logs bucket
         if (props.debug) {
           this.accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
-            bucketName: `${this.resourceIdPrefix}-access-logs`,
+            bucketName: `${props.resourceIdPrefix}-access-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -408,7 +398,7 @@ export class HostingConstruct extends Construct {
 
         // defaultCachePolicy
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
-          cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`,
+          cachePolicyName: `${props.resourceIdPrefix}-DefaultCachePolicy`,
           comment: 'Cache policy for HTML documents with short TTL',
           defaultTtl: Duration.minutes(1),
           minTtl: Duration.seconds(0),
@@ -421,7 +411,7 @@ export class HostingConstruct extends Construct {
         });
         
         const staticAssetsCachePolicy = new CachePolicy(this, 'StaticAssetsCachePolicy', {
-          cachePolicyName: `${this.resourceIdPrefix}-StaticAssetsCachePolicy`,
+          cachePolicyName: `${props.resourceIdPrefix}-StaticAssetsCachePolicy`,
           comment: 'Cache policy for static assets with long TTL',
           defaultTtl: Duration.days(365),
           minTtl: Duration.days(1),
@@ -435,7 +425,7 @@ export class HostingConstruct extends Construct {
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
-          responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
+          responseHeadersPolicyName: `${props.resourceIdPrefix}-ResponseHeadersPolicy`,
           comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           securityHeadersBehavior: {              
             contentSecurityPolicy: {
@@ -512,7 +502,7 @@ export class HostingConstruct extends Construct {
         };
 
         // finally, create distribution
-        const distributionName = `${this.resourceIdPrefix}-cdn`;
+        const distributionName = `${props.resourceIdPrefix}-cdn`;
 
         const distributionProps = {
           comment: "Stack name: " + Aws.STACK_NAME,
@@ -551,7 +541,7 @@ export class HostingConstruct extends Construct {
           ...(props.domain && props.globalCertificateArn
             ? {
                 domainNames: [props.domain],
-                certificate: Certificate.fromCertificateArn(this, `${this.resourceIdPrefix}-global-certificate`, props.globalCertificateArn),
+                certificate: Certificate.fromCertificateArn(this, `${props.resourceIdPrefix}-global-certificate`, props.globalCertificateArn),
               }
             : {}),
         }
@@ -585,7 +575,7 @@ export class HostingConstruct extends Construct {
         const domainParts = props.domain?.split('.');
         if (!domainParts) return;
 
-        return HostedZone.fromHostedZoneAttributes(this, `${this.resourceIdPrefix}-hosted-zone`, {
+        return HostedZone.fromHostedZoneAttributes(this, `${props.resourceIdPrefix}-hosted-zone`, {
             hostedZoneId: props.hostedZoneId as string,
             zoneName: domainParts[domainParts.length - 1] // Support subdomains
         });
@@ -602,14 +592,14 @@ export class HostingConstruct extends Construct {
         const dnsTarget = RecordTarget.fromAlias(new CloudFrontTarget(this.distribution));
 
         // Create a record for IPv4
-        new ARecord(this, `${this.resourceIdPrefix}-ipv4-record`, {
+        new ARecord(this, `${props.resourceIdPrefix}-ipv4-record`, {
             recordName: props.domain,
             zone: hostedZone as IHostedZone,
             target: dnsTarget,
         });
 
         // Create a record for IPv6
-        new AaaaRecord(this, `${this.resourceIdPrefix}-ipv6-record`, {
+        new AaaaRecord(this, `${props.resourceIdPrefix}-ipv6-record`, {
             recordName: props.domain,
             zone: hostedZone as IHostedZone,
             target: dnsTarget,

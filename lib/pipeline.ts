@@ -1,25 +1,21 @@
 import fs from 'fs';
 import yaml from "yaml";
 import { Construct } from "constructs";
-import { Aws, Duration, RemovalPolicy, CfnOutput, SecretValue, CfnParameter } from 'aws-cdk-lib';
-import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal, PolicyDocument } from 'aws-cdk-lib/aws-iam';
+import { Duration, RemovalPolicy, CfnOutput, SecretValue } from 'aws-cdk-lib';
+import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { Project, PipelineProject, LinuxBuildImage, ComputeType, Source, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
-import { Artifact, Pipeline, PipelineType, Variable } from 'aws-cdk-lib/aws-codepipeline';
+import { Project, PipelineProject, LinuxBuildImage, ComputeType, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
+import { Artifact, Pipeline, PipelineType } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
-import { EventBus, Rule } from 'aws-cdk-lib/aws-events';
-import { CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-events-targets';
-import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 
 export interface PipelineProps {
   debug?: boolean;
+  resourceIdPrefix: string;
+
+  // Objects from HostingConstruct
   HostingBucket: IBucket;
   Distribution: IDistribution;
-
-  application: string;
-  service: string;
-  environment: string;
 
   // source
   sourceProps: {
@@ -34,20 +30,17 @@ export interface PipelineProps {
   buildSpecFilePath?: string;
   buildProps?: {
     runtime: string;
-    runtime_version: string;
+    runtime_version: string|number;
     installcmd: string;
     buildcmd: string;
     outputdir: string;
+    include: string[];
+    exclude: string[];
   };
   buildEnvironmentVariables: { key: string; resource: string; }[],
-
-  // events
-  eventTarget: string;
 }
 
 export class PipelineConstruct extends Construct {
-
-  private resourceIdPrefix: string;
 
   /**
    * The buildstep
@@ -83,11 +76,9 @@ export class PipelineConstruct extends Construct {
   constructor(scope: Construct, id: string, props: PipelineProps) {
     super(scope, id);
 
-    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
-
     // output bucket
     this.buildOutputBucket = new Bucket(this, "BuildOutputBucket", {
-      bucketName: `${this.resourceIdPrefix}-output`,
+      bucketName: `${props.resourceIdPrefix}-output`,
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -103,15 +94,15 @@ export class PipelineConstruct extends Construct {
     this.codePipeline = this.createPipeline(props);
 
     // Check if event target is provided and create pipeline events log and ping
-    if (props.eventTarget) {
-      this.createPipelineEvents(props);
-    }
+    // if (props.eventTarget) {
+    //   this.createPipelineEvents(props);
+    // }
 
     // Create an output for the pipeline's name
     new CfnOutput(this, 'PipelineName', {
       value: this.codePipeline.pipelineName,
       description: 'The name of the CodePipeline pipeline',
-      exportName: `${this.resourceIdPrefix}-CodePipelineName`,
+      exportName: `${props.resourceIdPrefix}-CodePipelineName`,
     });
 
   }
@@ -156,7 +147,7 @@ export class PipelineConstruct extends Construct {
     });
     
     const project = new PipelineProject(this, 'SyncActionProject', {
-      projectName: `${this.resourceIdPrefix}-syncActionProject`,
+      projectName: `${props.resourceIdPrefix}-syncActionProject`,
       buildSpec: buildSpec,
       environment: {
         buildImage: LinuxBuildImage.STANDARD_7_0,
@@ -234,17 +225,15 @@ export class PipelineConstruct extends Construct {
     let buildLogsBucket: Bucket | undefined;
 
     // build logs bucket
-    if (props.debug) {
-      buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
-        bucketName: `${this.resourceIdPrefix}-build-logs`,
-        encryption: BucketEncryption.S3_MANAGED,
-        blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-        objectOwnership: ObjectOwnership.OBJECT_WRITER,
-        enforceSSL: true,
-        removalPolicy: RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-      });
-    }
+    buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
+      bucketName: `${props.resourceIdPrefix}-build-logs`,
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      objectOwnership: ObjectOwnership.OBJECT_WRITER,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
 
     // Read the buildspec.yml file
     let buildSpecYaml;
@@ -257,7 +246,7 @@ export class PipelineConstruct extends Construct {
       }
       const yamlFile = yaml.parse(buildSpecFile);
       buildSpecYaml = BuildSpec.fromObject(yamlFile);
-    } else {
+    } else {        
       buildSpecYaml = BuildSpec.fromObject({
         version: '0.2',
         env: {
@@ -278,8 +267,19 @@ export class PipelineConstruct extends Construct {
             },
         },
         artifacts: {
-            files: ['**/*'],
-            'base-directory': `${props.sourceProps.rootdir}${props.buildProps?.outputdir}` 
+            files: [
+              // Include patterns
+              ...(props.buildProps?.include && props.buildProps.include.length > 0
+                ? props.buildProps.include
+                : ['**/*']), // Default to all files if include is not specified
+              // Exclude patterns (as negative patterns)
+              ...(props.buildProps?.exclude
+                ? props.buildProps.exclude.map((pattern) => `!${pattern}`)
+                : []),
+            ],
+            'base-directory': props.sourceProps.rootdir
+              ? `${props.sourceProps.rootdir}/${props.buildProps?.outputdir || ''}`
+              : props.buildProps?.outputdir || '.' 
         }
       })
     }
@@ -294,7 +294,7 @@ export class PipelineConstruct extends Construct {
     
     // create the cloudbuild project
     const project = new PipelineProject(this, "CodeBuildProject", {
-      projectName: `${this.resourceIdPrefix}-buildproject`,
+      projectName: `${props.resourceIdPrefix}-buildproject`,
       buildSpec: buildSpecYaml,
       timeout: Duration.minutes(10),
       environment: {
@@ -303,11 +303,11 @@ export class PipelineConstruct extends Construct {
         privileged: true,
       },
       environmentVariables: buildEnvironmentVariables,
-      logging: props.debug && buildLogsBucket ? {
+      logging: {
         s3: {
           bucket: buildLogsBucket,
-        },
-      } : undefined,
+        }
+      },
     });
 
     // allow project to get secrets
@@ -361,7 +361,7 @@ export class PipelineConstruct extends Construct {
     // build artifact bucket
     if (props.debug) {
       artifactBucket = new Bucket(this, "ArtifactBucket", {
-        bucketName: `${this.resourceIdPrefix}-artifacts`,
+        bucketName: `${props.resourceIdPrefix}-artifacts`,
         encryption: BucketEncryption.S3_MANAGED,
         blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
         enforceSSL: true,
@@ -373,7 +373,7 @@ export class PipelineConstruct extends Construct {
     // setup the pipeline
     const pipeline = new Pipeline(this, "Pipeline", {
       artifactBucket: artifactBucket,
-      pipelineName: `${this.resourceIdPrefix}-pipeline`,
+      pipelineName: `${props.resourceIdPrefix}-pipeline`,
       crossAccountKeys: false,
       pipelineType: PipelineType.V2
     });
@@ -497,72 +497,5 @@ export class PipelineConstruct extends Construct {
     // return our pipeline
     return pipeline;
   }
-
-
-  /**
-   * Log Pipeline Events and ping to external service
-   * @param eventTarget 
-   */
-  private createPipelineEvents(props: PipelineProps) {
-    // Create a rule to capture execution events
-    const rule = new Rule(this, 'EventsRule', {
-      ruleName: `${this.resourceIdPrefix}-events`,
-      eventPattern: {
-        source: ['aws.codepipeline'],
-        detailType: ['CodePipeline Pipeline Execution State Change'],
-        detail: {
-          pipeline: [this.codePipeline.pipelineName],
-          state: ["STARTED", "SUCCEEDED", "RESUMED", "FAILED", "CANCELED", "SUPERSEDED"],
-        },
-      }
-    });
-
-    if (props.debug) {
-      // Create a CloudWatch Log Group for debugging
-      const logGroup = new LogGroup(this, 'EventsLogGroup', {
-        logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
-        removalPolicy: RemovalPolicy.DESTROY,
-        retention: RetentionDays.ONE_YEAR
-      });
-
-      // Create IAM role for log group
-      const logGroupEventRole = new Role(this, 'LogGroupEventRole', {
-        assumedBy: new ServicePrincipal('events.amazonaws.com'),
-        roleName: `${this.resourceIdPrefix}-LogGroupEventRole`,
-        description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
-      });
-
-      // Grant the role permission to write to the log group
-      logGroup.grantWrite(logGroupEventRole);
-
-      // Add the log group as a target
-      rule.addTarget(new CloudWatchLogGroup(logGroup));
-    }
-
-    // Create IAM role for cross-account event bus access
-    const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {
-      assumedBy: new ServicePrincipal('events.amazonaws.com'),
-      roleName: `${this.resourceIdPrefix}-CrossAccountEventRole`,
-      description: 'Role for EventBridge to write pipeline events to external Event Bus',
-      inlinePolicies: {
-        AllowPutEvents: new PolicyDocument({
-          statements: [
-            new PolicyStatement({
-              effect: Effect.ALLOW,
-              actions: ['events:PutEvents'],
-              resources: [props.eventTarget],
-            }),
-          ],
-        }),
-      },
-    });
-
-    // add external event bus as target
-    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventTarget);
-
-    rule.addTarget(new EventBusTarget(target, {
-      role: crossAccountEventRole
-    }));
-
-  }
+  
 }

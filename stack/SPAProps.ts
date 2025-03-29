@@ -37,35 +37,40 @@ export interface SPAProps extends StackProps {
      * Configure your Github repository
      */
     readonly sourceProps: {
-      owner: string;
-      repo: string;
-      branchOrRef: string;
+      owner?: string;
+      repo?: string;
+      branchOrRef?: string;
       rootdir: string|undefined;
     };
-
-    /**
-     * Provide the ARN to your Secrets Manager secret.
-     */
-    readonly githubAccessTokenArn: string;
-  
-    /**
-     * If you have a custom buildspec.yml file for your app, provide the relative path to the file.
-     */
-    readonly buildSpecFilePath?: string;
   
     /**
      * If you provide a buildSpec file, skip this.
      */
     readonly buildProps?: {
-      runtime: string;
-      runtime_version: string|number;
-      installcmd: string;
-      buildcmd: string;
-      outputdir: string;
+      runtime?: string;
+      runtime_version?: string|number;
+      installcmd?: string;
+      buildcmd?: string;
+      outputdir?: string;
+      include?: string[];
+      exclude?: string[];
     };
 
     /**
-     * If you have custom environments for build step, create Parameter Store variables as plaintext and use this format:
+     * Optinal. Enable Pipeline
+     * Provide the ARN to your Secrets Manager secret.
+     */
+    readonly githubAccessTokenArn?: string;
+  
+    /**
+     * Optional. Works only when githubAccessTokenArn is provided.
+     * If you have a custom buildspec.yml file for your app, provide the relative path to the file.
+     */
+    readonly buildSpecFilePath?: string;
+
+    /**
+     * Optional. Works only when githubAccessTokenArn is provided.
+     * Create Parameter Store variables as plaintext and use this format:
      * Must be in the same region as your stack.
      * 
      *   buildEnvironmentVariables: [
@@ -74,42 +79,41 @@ export interface SPAProps extends StackProps {
      */
     readonly buildEnvironmentVariables?: { key: string; resource: string; }[];
    
+
     /**
-     * Optional. The domain (without the protocol) at which the app shall be publicly available.
+     * Domains with Route53 and ACM
      */
+
+    // Optional. The domain (without the protocol) at which the app shall be publicly available.
     readonly domain?: string;
   
-    /**
-     * Optional. The ARN of the certificate to use on CloudFront for the app to make it accessible via HTTPS.
-     */
+    // Optional. The ARN of the certificate to use on CloudFront for the app to make it accessible via HTTPS.
     readonly globalCertificateArn?: string;
   
-    /**
-     * Optional. The ID of the hosted zone to create a DNS record for the specified domain.
-     */
+    // Optional. The ID of the hosted zone to create a DNS record for the specified domain.
     readonly hostedZoneId?: string;
 
+
     /**
-     * Optional: Array of redirects: source and destination paths
+     * Lambda@Edge functions
+     * - Redirects, rewrites, and custom headers
      */
+
+    // Optional: Array of redirects: source and destination paths
     readonly redirects?: { source: string; destination: string; }[];
 
-    /**
-     * Optional: Array of rewrites: source and destination paths
-     */
+    // Optional: Array of rewrites: source and destination paths
     readonly rewrites?: { source: string; destination: string; }[];
 
-    /**
-     * Optional: Custom headers
-     */
+    // Optional: Custom headers
     readonly headers?: { path: string; name: string; value: string; }[];
 
+
     /**
-     * Thunder.so platform features. 
-     * You can use the stack safely without using these props.
+     * Optional. Thunder platform features. 
+     * - You can use the stack safely without using these props.
      * - The pipeline events are broadcast using an event bus. Defaults to null.
      */
     readonly eventTarget?: string;
 
 }
-  
