@@ -341,7 +341,7 @@ A redirect is an HTTP response that instructs the client's browser to navigate t
 
 HTTP Status Codes: This library uses `301 (Moved Permanently)`.
 
-```ts
+```ts stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -369,7 +369,7 @@ const appStackProps: SPAProps = {
 ## Rewrite 
 A URL rewrite modifies the URL path internally on the server without changing the URL in the client's browser. The client remains unaware of the rewrite.
 
-```ts
+```ts stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -396,7 +396,7 @@ You can use wildcards to match arbitrary request paths.
 This library uses [Lambda@edge](https://aws.amazon.com/lambda/edge/) to configure HTTP response headers.
 
 
-```ts
+```ts stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -431,6 +431,22 @@ const appStackProps: SPAProps = {
 };
 ```
 
+## Syntax
+
+The header path must be a relative path without the domain. It will be matched with all custom domains attached to your site.
+
+You can use wildcards to match arbitrary request paths.
+
+| Path               | Effect                                   |
+|--------------------|------------------------------------------|
+| `/*`               | Only the root directory paths.           |
+| `/**`              | All request paths, including the root path and all sub-paths         |
+| `/blog/*`          | Matches `/blog/`, `/blog/latest-post/`, and all other paths under `/blog/` |
+| `/**/*`	           | Matches `/blog/`, `/assets/`, and all other paths with at least two slashes. |
+
+
+## Defaults
+
 The CDK-SPA library provides sensible defaults which you can override using the configuration above.
 
 ### Default Security Headers
@@ -453,9 +469,51 @@ The CDK-SPA library provides sensible defaults which you can override using the 
 | Access-Control-Allow-Methods | GET, HEAD, OPTIONS | 
 | Access-Control-Allow-Headers | * | | Access-Control-Max-Age | 600 |
 
+# Troubleshooting
 
+### Deployment Fails with Access Denied:
+- Ensure your AWS credentials are properly configured and have the necessary permissions.
+- Verify that the IAM user or role you're using has the required policies attached.
 
-## Useful commands
-* `npx cdk deploy`  deploy this stack to your default AWS account/region
-* `npx cdk diff`    compare deployed stack with current state
-* `npx cdk synth`   emits the synthesized CloudFormation template
+### Domain Not Resolving:
+- Check your DNS settings in Route53 and confirm that your domain is correctly pointing to your CloudFront distribution.
+- Ensure that the hostedZoneId in your configuration matches the one in Route53.
+
+### SSL Certificate Issues:
+- Make sure your SSL certificate is issued in the us-east-1 region and the ARN provided matches your certificate.
+- Confirm that the domain names in the certificate match your application's domain.
+
+### Build Failures in GitHub Actions:
+- Verify that your AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) are set as secrets in your GitHub repository.
+- Check that the IAM user associated with these credentials has the necessary permissions.
+
+### CodePipeline Not Triggering:
+- If using AWS CodePipeline and it isn't triggering, ensure your GitHub Personal Access Token is valid and has the required scopes (repo, admin:repo_hook).
+- Confirm that the token is correctly stored in AWS Secrets Manager and the ARN is accurately referenced.
+
+### Static Assets Not Loading:
+- Confirm that your build output directory (`outputdir`) is correctly specified and that all assets are being uploaded to S3.
+- Ensure that your application's base URL or public path is correctly configured to load assets from the right location.
+- **Monorepo**: If you're using a monorepo, verify that the `rootdir` and `outputdir` are correctly set in your configuration. The library appends `rootdir` and `outputdir` to construct the correct directory path where your static assets are located.
+
+### Lambda@Edge Function Errors:
+- Check the Lambda logs in CloudWatch for any errors related to your redirects, rewrites, or headers.
+- Validate the syntax and paths specified in your configuration for redirects, rewrites, and headers.
+
+### CORS Issues:
+- If encountering Cross-Origin Resource Sharing (CORS) errors, adjust the CORS headers in your configuration.
+- Ensure that the Access-Control-Allow-Origin header is set appropriately for your use case.
+
+### Unexpected Redirects or Rewrites:
+- Review your redirects and rewrites configuration to ensure there are no conflicting rules.
+- Test specific URLs to see how they are being handled and adjust your configurations accordingly.
+
+### Performance Issues:
+- Verify that caching is properly configured through the Cache-Control headers.
+- Ensure that static assets are being served from CloudFront and not directly from the origin.
+
+### Invalid CloudFront Distribution Configuration:
+- If you receive errors related to CloudFront, double-check your domain, certificate ARN, and other related settings.
+- Make sure all required resources have been properly provisioned and are active.
+
+For further assistance, consult the AWS documentation or [raise an issue](https://github.com/thunder-so/cdk-spa/issues) in the GitHub repository.
