@@ -16,6 +16,19 @@ All notable changes to this project will be documented in this file.
 
 -
 
+## [0.16.0]
+
+### Added
+
+- Supports S3 BucketDeployment
+- Pipeline mode optional
+- CLI tools for deploy and destroy
+
+### Changed
+
+- Docs updated
+
+
 ## [0.11.0]
 
 ### Added
