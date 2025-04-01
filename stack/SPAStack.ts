@@ -41,7 +41,11 @@ export class SPAStack extends Stack {
       hostedZoneId: props.hostedZoneId as string,
       redirects: props.redirects,
       rewrites: props.rewrites,
-      headers: props.headers
+      headers: props.headers,
+      allowHeaders: props.allowHeaders,
+      allowCookies: props.allowCookies,
+      allowQueryParams: props.allowQueryParams,
+      denyQueryParams: props.denyQueryParams,
     });
 
     /**

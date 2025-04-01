@@ -25,6 +25,10 @@ const {
   redirects,
   rewrites,
   headers,
+  allowHeaders,
+  allowCookies,
+  allowQueryParams,
+  denyQueryParams,
   eventTarget
 } = metadata;
 
@@ -60,6 +64,10 @@ const appStackProps: SPAProps = {
   redirects,
   rewrites,
   headers,
+  allowHeaders,
+  allowCookies,
+  allowQueryParams,
+  denyQueryParams,
   eventTarget
 };
 

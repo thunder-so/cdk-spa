@@ -17,7 +17,7 @@ Supported frameworks:
   - [React](https://vite.new/react), [Vue](https://vite.new/vue), [Svelte](https://vite.new/svelte), [Preact](https://vite.new/preact), [Qwik](https://vite.new/qwik), [Lit](https://vite.new/lit), [Solid](https://vite.new/solid) 
 - [Gatsby (static)](https://www.gatsbyjs.com/)
 - [React Router (client-side and static prerendering)](https://reactrouter.com/start/framework/rendering)
-- Any static site generator (SSG) framework in any language
+- Any static site generator (SSG) framework
 
 AWS resources:
 
@@ -231,7 +231,7 @@ aws secretsmanager create-secret --name your-secret-name --secret-string your-to
 - The command will return something like this:
 ```json
 {
-    "ARN": "arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-token-VgnkyF",
+    "ARN": "arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX",
     "Name": "your-secret-name",
     "VersionId": "b1a532d2-4434-42a3-9283-41581be07455"
 }
@@ -258,7 +258,7 @@ const appStackProps: SPAProps = {
     outputdir: 'dist/',
   },
 
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:0123456789000:secret:your-secret-name-XXXXX',
+  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
 };
 ```
 
@@ -476,6 +476,36 @@ The CDK-SPA library provides sensible defaults which you can override using the 
 | Access-Control-Allow-Credentials | false | 
 | Access-Control-Allow-Methods | GET, HEAD, OPTIONS | 
 | Access-Control-Allow-Headers | * | | Access-Control-Max-Age | 600 |
+
+
+# Advanced: Customize Cache Behavior 
+
+You can fine-tune CloudFront's caching behavior by specifying which `headers`, `cookies`, and `query parameters` to include or exclude in the cache key. This allows you to control how CloudFront caches content and forwards requests to the origin, improving cache efficiency and ensuring dynamic content is handled correctly.
+
+```ts
+// stack/index.ts
+const appStackProps: SPAProps = {
+  // ... other props
+
+  // Customize cache behavior
+  allowHeaders: ['Accept-Language', 'User-Agent'],
+  allowCookies: ['session-*', 'user-preferences'],
+  allowQueryParams: ['lang', 'theme'],
+  // Or, to exclude specific query parameters
+  // denyQueryParams: ['utm_source', 'utm_medium', 'fbclid'],
+};
+```
+
+- `allowHeaders`: An array of header names to include in the cache key and forward to the origin.
+- `allowCookies`: An array of cookie names to include in the cache key and forward to the origin.
+- `allowQueryParams`: An array of query parameter names to include in the cache key and forward to the origin.
+- `denyQueryParams`: An array of query parameter names to exclude from the cache key and not forward to the origin.
+
+If neither `allowQueryParams` nor `denyQueryParams` are specified, all query parameters are ignored in caching and not forwarded to the origin.
+
+> [!NOTE]
+> The `allowQueryParams` and `denyQueryParams` properties are mutually exclusive. If both are provided, denyQueryParams will be ignored.
+
 
 # Troubleshooting
 

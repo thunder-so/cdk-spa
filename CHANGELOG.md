@@ -16,6 +16,15 @@ All notable changes to this project will be documented in this file.
 
 -
 
+## [0.17.0]
+
+### Added
+
+- allowHeaders
+- allowCookies
+- allowQueryParams
+- denyQueryParams
+
 ## [0.16.0]
 
 ### Added

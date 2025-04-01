@@ -18,6 +18,10 @@ export interface HostingProps {
     redirects?: { source: string; destination: string; }[];
     rewrites?: { source: string; destination: string; }[];
     headers?: { path: string; name: string; value: string; }[];
+    readonly allowHeaders?: string[];
+    readonly allowCookies?: string[];
+    readonly allowQueryParams?: string[];
+    readonly denyQueryParams?: string[];
 }
 
 export class HostingConstruct extends Construct {
@@ -403,9 +407,17 @@ export class HostingConstruct extends Construct {
           defaultTtl: Duration.minutes(1),
           minTtl: Duration.seconds(0),
           maxTtl: Duration.minutes(1),
-          headerBehavior: CacheHeaderBehavior.none(),
-          cookieBehavior: CacheCookieBehavior.none(),
-          queryStringBehavior: CacheQueryStringBehavior.none(),
+          headerBehavior: props.allowHeaders?.length
+            ? CacheHeaderBehavior.allowList(...props.allowHeaders)
+            : CacheHeaderBehavior.none(),
+          cookieBehavior: props.allowCookies?.length
+            ? CacheCookieBehavior.allowList(...props.allowCookies)
+            : CacheCookieBehavior.none(),
+          queryStringBehavior: props.allowQueryParams?.length 
+            ? CacheQueryStringBehavior.allowList(...props.allowQueryParams) 
+            : (props.denyQueryParams?.length 
+              ? CacheQueryStringBehavior.denyList(...props.denyQueryParams) 
+              : CacheQueryStringBehavior.none()),
           enableAcceptEncodingGzip: true,
           enableAcceptEncodingBrotli: true,
         });
