@@ -409,19 +409,6 @@ export class HostingConstruct extends Construct {
           enableAcceptEncodingGzip: true,
           enableAcceptEncodingBrotli: true,
         });
-        
-        const staticAssetsCachePolicy = new CachePolicy(this, 'StaticAssetsCachePolicy', {
-          cachePolicyName: `${props.resourceIdPrefix}-StaticAssetsCachePolicy`,
-          comment: 'Cache policy for static assets with long TTL',
-          defaultTtl: Duration.days(365),
-          minTtl: Duration.days(1),
-          maxTtl: Duration.days(365),
-          headerBehavior: CacheHeaderBehavior.none(),
-          cookieBehavior: CacheCookieBehavior.none(),
-          queryStringBehavior: CacheQueryStringBehavior.none(),
-          enableAcceptEncodingGzip: true,
-          enableAcceptEncodingBrotli: true,
-        });
 
         // ResponseHeadersPolicy
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
@@ -477,7 +464,8 @@ export class HostingConstruct extends Construct {
           responseHeadersPolicy: responseHeadersPolicy,
           cachePolicy: defaultCachePolicy,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD,
-          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachedMethods: CachedMethods.CACHE_GET_HEAD,
+          viewerProtocolPolicy: ViewerProtocolPolicy.HTTPS_ONLY,
           edgeLambdas: [
             ...(this.cloudFrontRedirectsRewrites ? [{
               eventType: LambdaEdgeEventType.VIEWER_REQUEST,
@@ -495,7 +483,7 @@ export class HostingConstruct extends Construct {
           origin: this.s3Origin,
           compress: true,
           responseHeadersPolicy: responseHeadersPolicy,
-          cachePolicy: staticAssetsCachePolicy,
+          cachePolicy: CachePolicy.CACHING_OPTIMIZED,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
           cachedMethods: CachedMethods.CACHE_GET_HEAD_OPTIONS,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -521,7 +509,7 @@ export class HostingConstruct extends Construct {
             "*.css": staticAssetsBehaviour
           },
           responseHeadersPolicy: responseHeadersPolicy,
-          httpVersion: HttpVersion.HTTP2_AND_3,
+          httpVersion: HttpVersion.HTTP3,
           minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,
           defaultRootObject: "index.html",
           errorResponses: [
@@ -533,7 +521,7 @@ export class HostingConstruct extends Construct {
             },
             {
               httpStatus: 404,
-              responseHttpStatus: 200,
+              responseHttpStatus: 404,
               ttl: Duration.seconds(0),
               responsePagePath: '/index.html',
             },

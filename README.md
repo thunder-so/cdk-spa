@@ -24,7 +24,7 @@ AWS resources:
 - Fast responses from [CloudFront](https://aws.amazon.com/cloudfront/)
 - Automatic upload of the build files and static assets to [S3](https://aws.amazon.com/s3/) with optimized caching rules
 - Publicly available by a custom domain (or subdomain) via [Route53](https://aws.amazon.com/route53/) and SSL via [Certificate Manager](https://aws.amazon.com/certificate-manager/)
-- Custom HTTP response headers, URL Redirects and Rewrites using [Lambda@edge](https://aws.amazon.com/lambda/edge/)
+- Custom HTTP response headers, URL Redirects and Rewrites using [Lambda@Edge](https://aws.amazon.com/lambda/edge/)
 - Build and deploy with [Github Actions](https://docs.github.com/en/actions)
 - Optional automatic build and deploy with [CodeBuild](https://aws.amazon.com/codebuild/) and [CodePipeline](https://aws.amazon.com/codepipeline/) from [Github](https://github.com/) repository using Access Token.
 
@@ -80,7 +80,8 @@ You should adapt the file to your project's needs.
 > [!NOTE]
 > Use different filenames such as `production.ts` and `testing.ts` for environments.
 
-```ts stack/index.ts
+```ts
+//stack/index.ts
 import { App } from "aws-cdk-lib";
 import { SPAStack, type SPAProps } from "@thunderso/cdk-spa";
 
@@ -176,7 +177,8 @@ Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as repository secrets in Git
 > [!IMPORTANT]
 > The certificate must be issued in `us-east-1` *(global)* regardless of the region used for the app itself as it will be attached to the CloudFront distribution which works globally.
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -243,7 +245,8 @@ Take note of the ARN.
 
 ## 3. Configure stack
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -285,7 +288,8 @@ artifacts:
   base-directory: 'dist/'
 ```
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -311,7 +315,8 @@ aws ssm put-parameter --name "/my-app/API_KEY" --type "SecureString" --value "yo
 
 Pass environment variables to your build, for example, to inject configuration or secrets. 
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -334,14 +339,15 @@ The library automatically adds the necessary permissions to the CodeBuild projec
 
 When deploying web applications, especially Single Page Applications (SPAs), configuring URL handling is crucial for both user experience and search engine optimization (SEO). The terms redirect and rewrite refer to different methods of handling HTTP requests.
 
-This library uses [Lambda@edge](https://aws.amazon.com/lambda/edge/) to configure redirects and rewrites.
+This library uses [Lambda@Edge](https://aws.amazon.com/lambda/edge/) to configure redirects and rewrites.
 
 ## Redirect
 A redirect is an HTTP response that instructs the client's browser to navigate to a different URL. This involves a round-trip to the server and results in the browser updating the address bar to the new URL.
 
 HTTP Status Codes: This library uses `301 (Moved Permanently)`.
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -369,7 +375,8 @@ const appStackProps: SPAProps = {
 ## Rewrite 
 A URL rewrite modifies the URL path internally on the server without changing the URL in the client's browser. The client remains unaware of the rewrite.
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -389,14 +396,15 @@ const appStackProps: SPAProps = {
 
 # Advanced: Configure HTTP Response Headers
 
-The header path must be a relative path without the domain. It will be matched with all custom domains attached to your site.
+[Lambda@Edge](https://aws.amazon.com/lambda/edge/) enables you to customize HTTP response headers for your application by executing lightweight Lambda functions at AWS CloudFront edge locations. 
 
-You can use wildcards to match arbitrary request paths.
+This allows you to modify headers dynamically based on request paths, enhancing security, performance, and user experience. 
 
-This library uses [Lambda@edge](https://aws.amazon.com/lambda/edge/) to configure HTTP response headers.
+For example, you can set caching policies with `Cache-Control`, enforce security with `Strict-Transport-Security`, or manage cross-origin requests with `Access-Control-Allow-Origin`. The configuration supports wildcards and placeholders for flexible path matching, ensuring precise control over header application.
 
 
-```ts stack/index.ts
+```ts
+// stack/index.ts
 const appStackProps: SPAProps = {
   // ... other props
 
@@ -431,7 +439,7 @@ const appStackProps: SPAProps = {
 };
 ```
 
-## Syntax
+## Path syntax
 
 The header path must be a relative path without the domain. It will be matched with all custom domains attached to your site.
 
