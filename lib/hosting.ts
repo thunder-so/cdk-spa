@@ -1,13 +1,13 @@
-import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
+import { Aws, Fn, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Role, PolicyStatement, Effect, ServicePrincipal, AnyPrincipal, ManagedPolicy } from "aws-cdk-lib/aws-iam";
-import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { Distribution, type IDistribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, Function as CloudFrontFunction, FunctionCode as CloudFrontFunctionCode, FunctionEventType, OriginAccessIdentity, CachedMethods, FunctionRuntime, LambdaEdgeEventType, experimental } from "aws-cdk-lib/aws-cloudfront";
+import { S3Origin, HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
+import { Distribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, CachedMethods, LambdaEdgeEventType, experimental, OriginRequestPolicy, OriginRequestHeaderBehavior, OriginRequestCookieBehavior, OriginRequestQueryStringBehavior, OriginProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
-import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
+import { Function, FunctionUrl, Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
     debug?: boolean;
@@ -22,6 +22,11 @@ export interface HostingProps {
     readonly allowCookies?: string[];
     readonly allowQueryParams?: string[];
     readonly denyQueryParams?: string[];
+    readonly ssrProps?: {
+        routes?: string[];
+    };
+    readonly ssrLambdaFunction?: Function;
+    readonly ssrLambdaFunctionUrl?: FunctionUrl;
 }
 
 export class HostingConstruct extends Construct {
@@ -39,12 +44,22 @@ export class HostingConstruct extends Construct {
     /**
      * The CloudFront distribution.
      */
-    public distribution:  IDistribution;
+    public distribution:  Distribution;
 
     /**
      * The CloudFront distribution origin that routes to S3 HTTP server.
      */
     private s3Origin: S3Origin;
+
+    /**
+     * The HTTP origin that routes to the SSR Lambda function.
+     */
+    private httpOrigin: HttpOrigin|undefined;
+
+    /**
+     * The HTTP origin request policy that forwards all headers, cookies, and query strings to the origin.
+     */
+    private originRequestPolicy: OriginRequestPolicy|undefined;
 
     /**
      * The OAC constructs created for the S3 origin.
@@ -115,6 +130,11 @@ export class HostingConstruct extends Construct {
       // create the S3 bucket for hosting
       this.createHostingBucket(props);
 
+      // Create the SSR resources
+      if(props.ssrLambdaFunction) {
+        this.createSSRStack(props);
+      }
+
       // Create the CloudFront distribution
       this.createCloudfrontDistribution(props);
 
@@ -139,6 +159,28 @@ export class HostingConstruct extends Construct {
         description: 'The URL of the CloudFront distribution',
         exportName: `${props.resourceIdPrefix}-CloudFrontDistributionUrl`,
       });
+    }
+
+    /**
+     * When SSR is enabled, create an origin for the SSR Lambda function
+     * and set the default behavior to use this origin.
+     * The SSR Lambda function will be used to handle all requests
+     * that are not handled by the static assets behavior.
+     */
+    private createSSRStack(props: HostingProps) {
+      this.originRequestPolicy = new OriginRequestPolicy(this, 'OriginRequestPolicy', {
+        originRequestPolicyName: `${props.resourceIdPrefix}-OriginRequestPolicy`,
+        comment: 'Policy to forward all headers, cookies, and query strings to the origin',
+        headerBehavior: OriginRequestHeaderBehavior.all(),
+        cookieBehavior: OriginRequestCookieBehavior.all(),
+        queryStringBehavior: OriginRequestQueryStringBehavior.all(),
+      });
+  
+      const functionUrlDomain = Fn.select(2, Fn.split('/', props.ssrLambdaFunctionUrl!.url));
+      this.httpOrigin = new HttpOrigin(functionUrlDomain, {
+        protocolPolicy: OriginProtocolPolicy.HTTPS_ONLY,
+      });
+
     }
 
     /**
@@ -316,11 +358,10 @@ export class HostingConstruct extends Construct {
      * @private
      */
     private createHostingBucket(props: HostingProps) {
-        let originLogsBucket: Bucket | undefined;
 
         // Hosting bucket access log bucket
-        if (props.debug) {
-          originLogsBucket = new Bucket(this, "OriginLogsBucket", {
+        const originLogsBucket = props.debug
+          ? new Bucket(this, "OriginLogsBucket", {
             bucketName: `${props.resourceIdPrefix}-origin-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -328,8 +369,8 @@ export class HostingConstruct extends Construct {
             enforceSSL: true,
             removalPolicy: RemovalPolicy.DESTROY,
             autoDeleteObjects: true
-          });
-        }
+          })
+          : undefined;
 
         // primary hosting bucket
         const bucket = new Bucket(this, "HostingBucket", {
@@ -388,8 +429,8 @@ export class HostingConstruct extends Construct {
     private createCloudfrontDistribution(props: HostingProps) {
 
         // access logs bucket
-        if (props.debug) {
-          this.accessLogsBucket = new Bucket(this, "AccessLogsBucket", {
+        this.accessLogsBucket = props.debug
+          ? new Bucket(this, "AccessLogsBucket", {
             bucketName: `${props.resourceIdPrefix}-access-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
@@ -397,32 +438,13 @@ export class HostingConstruct extends Construct {
             enforceSSL: true,
             removalPolicy: RemovalPolicy.DESTROY,
             autoDeleteObjects: true
-          });
-        }
+          })
+          : undefined;
 
-        // defaultCachePolicy
-        const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
-          cachePolicyName: `${props.resourceIdPrefix}-DefaultCachePolicy`,
-          comment: 'Cache policy for HTML documents with short TTL',
-          defaultTtl: Duration.minutes(1),
-          minTtl: Duration.seconds(0),
-          maxTtl: Duration.minutes(1),
-          headerBehavior: props.allowHeaders?.length
-            ? CacheHeaderBehavior.allowList(...props.allowHeaders)
-            : CacheHeaderBehavior.none(),
-          cookieBehavior: props.allowCookies?.length
-            ? CacheCookieBehavior.allowList(...props.allowCookies)
-            : CacheCookieBehavior.none(),
-          queryStringBehavior: props.allowQueryParams?.length 
-            ? CacheQueryStringBehavior.allowList(...props.allowQueryParams) 
-            : (props.denyQueryParams?.length 
-              ? CacheQueryStringBehavior.denyList(...props.denyQueryParams) 
-              : CacheQueryStringBehavior.none()),
-          enableAcceptEncodingGzip: true,
-          enableAcceptEncodingBrotli: true,
-        });
-
-        // ResponseHeadersPolicy
+        /**
+         * Response Headers Policy
+         * This policy is used to set default security headers for the CloudFront distribution.
+         */
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
           responseHeadersPolicyName: `${props.resourceIdPrefix}-ResponseHeadersPolicy`,
           comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
@@ -468,8 +490,61 @@ export class HostingConstruct extends Construct {
           },
           removeHeaders: ['server', 'age' , 'date'],
         });
+
+        /**
+         * The default cache policy for HTML documents with short TTL.
+         * This policy is used for the default behavior of the CloudFront distribution.
+         */
+        const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
+          cachePolicyName: `${props.resourceIdPrefix}-DefaultCachePolicy`,
+          comment: 'Cache policy for HTML documents with short TTL',
+          defaultTtl: Duration.minutes(1),
+          minTtl: Duration.seconds(0),
+          maxTtl: Duration.minutes(1),
+          headerBehavior: props.allowHeaders?.length
+            ? CacheHeaderBehavior.allowList(...props.allowHeaders)
+            : CacheHeaderBehavior.none(),
+          cookieBehavior: props.allowCookies?.length
+            ? CacheCookieBehavior.allowList(...props.allowCookies)
+            : CacheCookieBehavior.none(),
+          queryStringBehavior: props.allowQueryParams?.length 
+            ? CacheQueryStringBehavior.allowList(...props.allowQueryParams) 
+            : (props.denyQueryParams?.length 
+              ? CacheQueryStringBehavior.denyList(...props.denyQueryParams) 
+              : CacheQueryStringBehavior.none()),
+          enableAcceptEncodingGzip: true,
+          enableAcceptEncodingBrotli: true,
+        });
+
+        /**
+         * Cache policy for SSR
+         * This policy is used for the SSR behavior of the CloudFront distribution.
+         */
+        const ssrCachePolicy = new CachePolicy(this, "SSRCachePolicy", {
+          cachePolicyName: `${props.resourceIdPrefix}-SSRCachePolicy`,
+          comment: 'Cache policy for SSR with no caching',
+          defaultTtl: Duration.seconds(0),
+          minTtl: Duration.seconds(0),
+          maxTtl: Duration.seconds(0),
+          headerBehavior: props.allowHeaders?.length
+            ? CacheHeaderBehavior.allowList(...props.allowHeaders)
+            : CacheHeaderBehavior.allowList('Accept', 'Accept-Encoding'),
+          cookieBehavior: props.allowCookies?.length
+            ? CacheCookieBehavior.allowList(...props.allowCookies)
+            : CacheCookieBehavior.all(),
+          queryStringBehavior: props.allowQueryParams?.length 
+            ? CacheQueryStringBehavior.allowList(...props.allowQueryParams) 
+            : (props.denyQueryParams?.length 
+              ? CacheQueryStringBehavior.denyList(...props.denyQueryParams) 
+              : CacheQueryStringBehavior.all()),
+          enableAcceptEncodingGzip: true,
+          enableAcceptEncodingBrotli: true,
+        });
       
-        // defaultBehavior
+        /**
+         * The default behavior for the CloudFront distribution.
+         * This behavior is used for the default behavior of the CloudFront distribution.
+         */
         const defaultBehavior: BehaviorOptions = {
           origin: this.s3Origin,
           compress: true,
@@ -490,18 +565,65 @@ export class HostingConstruct extends Construct {
           ],
         };
 
-        // staticAssetsBehaviour
+        // Additional behaviors
+        const additionalBehaviors: { [pathPattern: string]: BehaviorOptions } = {};
+
+        /**
+         * The behavior for static assets.
+         * This behavior is used for the static assets of the CloudFront distribution.
+         * It is configured to cache static assets for a longer period of time.
+         * Using a managed cache policy CACHING_OPTIMIZED.
+         * Using a managed response headers policy: CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT
+         */
         const staticAssetsBehaviour: BehaviorOptions = {
           origin: this.s3Origin,
           compress: true,
-          responseHeadersPolicy: responseHeadersPolicy,
+          responseHeadersPolicy: ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS_WITH_PREFLIGHT,
           cachePolicy: CachePolicy.CACHING_OPTIMIZED,
           allowedMethods: AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
           cachedMethods: CachedMethods.CACHE_GET_HEAD_OPTIONS,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         };
 
-        // finally, create distribution
+        // Add static asset behaviors
+        const staticAssetPatterns = [
+          '*.png',
+          '*.jpg',
+          '*.jpeg',
+          '*.gif',
+          '*.ico',
+          '*.css',
+          '*.js',
+        ];
+        
+        for (const pattern of staticAssetPatterns) {
+          additionalBehaviors[pattern] = staticAssetsBehaviour;
+        }
+
+        /** 
+         * SSR behavior
+         * This behavior is used for the SSR Lambda function.
+         * It is configured to forward all headers, cookies, and query strings to the origin.
+         */
+        const ssrBehavior: BehaviorOptions = {
+          origin: this.httpOrigin as HttpOrigin,
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: AllowedMethods.ALLOW_ALL,
+          cachePolicy: ssrCachePolicy,
+          originRequestPolicy: this.originRequestPolicy,      
+        }
+
+        // If SSR routes are defined, add the SSR behavior to the additional behaviors
+        const ssrRoutes = props.ssrProps?.routes ?? ['/*'];
+
+        for (const route of ssrRoutes) {
+          additionalBehaviors[route] = ssrBehavior;
+        }
+    
+        /**
+         * Create CloudFront Distribution
+         * 
+         */
         const distributionName = `${props.resourceIdPrefix}-cdn`;
 
         const distributionProps = {
@@ -509,17 +631,7 @@ export class HostingConstruct extends Construct {
           enableLogging: props.debug ? true : false,
           logBucket: props.debug ? this.accessLogsBucket : undefined,
           defaultBehavior: defaultBehavior,
-          additionalBehaviors: {
-            "*.jpg": staticAssetsBehaviour,
-            "*.jpeg": staticAssetsBehaviour,
-            "*.png": staticAssetsBehaviour,
-            "*.gif": staticAssetsBehaviour,
-            "*.bmp": staticAssetsBehaviour,
-            "*.tiff": staticAssetsBehaviour,
-            "*.ico": staticAssetsBehaviour,
-            "*.js": staticAssetsBehaviour,
-            "*.css": staticAssetsBehaviour
-          },
+          additionalBehaviors: additionalBehaviors,
           responseHeadersPolicy: responseHeadersPolicy,
           httpVersion: HttpVersion.HTTP3,
           minimumProtocolVersion: SecurityPolicyProtocol.TLS_V1_2_2021,

@@ -1,6 +1,6 @@
 import { Stack } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { HostingConstruct, DeployConstruct, PipelineConstruct, EventsConstruct } from '../lib';
+import { HostingConstruct, DeployConstruct, PipelineConstruct, EventsConstruct, SSRConstruct } from '../lib';
 import type { SPAProps } from './SPAProps'; 
 import { CfnDistribution } from "aws-cdk-lib/aws-cloudfront";
 import { CfnBucketPolicy } from "aws-cdk-lib/aws-s3";
@@ -30,6 +30,25 @@ export class SPAStack extends Stack {
     const outputdir = sanitizePath(props.buildProps?.outputdir);
 
     /**
+     * Enable SSR if entrypoint and outputdir are provided
+     * 
+     */
+    const enableSSR = props?.ssrProps?.entrypoint && props?.ssrProps?.outputdir
+      ? new SSRConstruct(this, 'SSR', {
+        debug: props.debug,
+        resourceIdPrefix: resourceIdPrefix,
+        ssrProps: {
+          entrypoint: props.ssrProps.entrypoint,
+          outputdir: sanitizePath(props.ssrProps.outputdir),
+          routes: props.ssrProps.routes,
+          memorySize: props.ssrProps.memorySize,
+          timeout: props.ssrProps.timeout,
+        },
+        ssrEnvironmentVariables: props.ssrEnvironmentVariables,
+      })
+      : undefined;
+
+    /**
      * Hosting the SPA with S3 and CloudFront
      * 
      */
@@ -46,6 +65,15 @@ export class SPAStack extends Stack {
       allowCookies: props.allowCookies,
       allowQueryParams: props.allowQueryParams,
       denyQueryParams: props.denyQueryParams,
+      ...(enableSSR 
+        ? { 
+          ssrProps: {
+            routes: props?.ssrProps?.routes,
+          },
+          ssrLambdaFunction: enableSSR.ssrLambdaFunction, 
+          ssrLambdaFunctionUrl: enableSSR.ssrLambdaFunctionUrl
+        }
+        : {}),
     });
 
     /**

@@ -138,6 +138,50 @@ export interface SPAProps extends StackProps {
     readonly denyQueryParams?: string[];
 
     /**
+     * Enable SSR support.
+     */
+    readonly ssrProps?: {
+      /**
+       * The entry point for the Lambda function.
+       * For example, 'index.handler'.
+       */
+      entrypoint?: string;
+
+      /**
+       * The directory where the build outputs are located (relative to the project root).
+       */
+      outputdir?: string;
+
+      /**
+       * The URL routes where the behavior is attached.
+       * For example, ['/api/*'].
+       */
+      routes?: string[];
+
+      /**
+       * The memory size to allocate to the Lambda function.
+       * Defaults to 512 MB.
+       */
+      memorySize?: number;
+
+      /**
+       * The timeout for the Lambda function.
+       * Defaults to 10 seconds.
+       */
+      timeout?: number;
+    };
+
+    /**
+     * If you have custom environments for the Lambda function, create Parameter Store variables as plaintext and use this format:
+     * Must be in the same region as your stack.
+     *
+     *   environmentVariables: [
+     *     { key: 'API_ENDPOINT', resource: '/path-to/your-parameter' }
+     *   ]
+     */
+    readonly ssrEnvironmentVariables?: { key: string; resource: string }[];
+
+    /**
      * Optional. Thunder platform features. 
      * - You can use the stack safely without using these props.
      * - The pipeline events are broadcast using an event bus. Defaults to null.
