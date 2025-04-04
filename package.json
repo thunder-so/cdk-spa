@@ -1,6 +1,6 @@
 {
   "name": "@thunderso/cdk-spa",
-  "version": "0.15.1",
+  "version": "0.17.0",
   "description": "CDK Library for provisioning infrastructure for Single Page Applications.",
   "tags": [
     "aws",
@@ -27,7 +27,9 @@
     "watch": "tsc -b -w"
   },
   "bin": {
-    "cdk-spa-init": "cdk-spa-init.mjs"
+    "cdk-spa-init": "cli/cdk-spa-init.mjs",
+    "cdk-spa-deploy": "cli/cdk-spa-deploy.mjs",
+    "cdk-spa-destroy": "cli/cdk-spa-destroy.mjs"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

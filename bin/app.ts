@@ -16,8 +16,8 @@ const {
   service,
   environment,
   sourceProps,
-  githubAccessTokenArn,
   buildProps,
+  githubAccessTokenArn,
   buildEnvironmentVariables,
   domain,
   globalCertificateArn,
@@ -25,6 +25,10 @@ const {
   redirects,
   rewrites,
   headers,
+  allowHeaders,
+  allowCookies,
+  allowQueryParams,
+  denyQueryParams,
   eventTarget
 } = metadata;
 
@@ -43,14 +47,16 @@ const appStackProps: SPAProps = {
     branchOrRef: sourceProps.branchOrRef,
     rootdir: sourceProps.rootdir
   },
-  githubAccessTokenArn,
   buildProps: {
     runtime: buildProps?.runtime as string,
     runtime_version: buildProps?.runtime_version as string,
     installcmd: buildProps?.installcmd as string,
     buildcmd: buildProps?.buildcmd as string,
-    outputdir: buildProps?.outputdir as string
+    outputdir: buildProps?.outputdir as string,
+    include: buildProps?.include as string[],
+    exclude: buildProps?.exclude as string[]
   },
+  githubAccessTokenArn,
   buildEnvironmentVariables,
   domain,
   globalCertificateArn,
@@ -58,6 +64,10 @@ const appStackProps: SPAProps = {
   redirects,
   rewrites,
   headers,
+  allowHeaders,
+  allowCookies,
+  allowQueryParams,
+  denyQueryParams,
   eventTarget
 };
 
