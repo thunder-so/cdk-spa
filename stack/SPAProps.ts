@@ -181,7 +181,6 @@ export interface SPAProps extends StackProps {
      */
     readonly ssrEnvironmentVariables?: { key: string; resource: string }[];
 
-
     /**
      * Optional. Thunder platform features. 
      * - You can use the stack safely without using these props.
