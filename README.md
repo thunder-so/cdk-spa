@@ -47,7 +47,6 @@ npm install -g aws-cdk
 cdk bootstrap aws://your-aws-account-id/us-east-1
 ```
 
-
 This package uses the `npm` package manager and is an ES6+ Module.
 
 
@@ -478,7 +477,24 @@ The CDK-SPA library provides sensible defaults which you can override using the 
 | Access-Control-Allow-Headers | * | | Access-Control-Max-Age | 600 |
 
 
-# Advanced: Customize Cache Behavior 
+# Advanced: Configuring CloudFront
+
+## Custom Error Page
+
+You can specify a custom error page to handle `404 Not Found` errors by setting the `errorPagePath` property. This path should be relative to your application's output directory.
+
+**Example Configuration:**
+
+```ts stack/index.ts
+const appStackProps: SPAProps = {
+  // ... other props
+
+  // Optional: Custom error page
+  errorPagePath: '/404.html', // Relative to the output directory. Defaults to '/index.html'.
+};
+```
+
+## Customize Cache Behavior 
 
 You can fine-tune CloudFront's caching behavior by specifying which `headers`, `cookies`, and `query parameters` to include or exclude in the cache key. This allows you to control how CloudFront caches content and forwards requests to the origin, improving cache efficiency and ensuring dynamic content is handled correctly.
 

@@ -57,7 +57,14 @@ export interface SPAProps extends StackProps {
     };
 
     /**
-     * Optinal. Enable Pipeline
+     * Optional. The path to the error page in the output directory. e.g. /404.html
+     * Relative to the output directory.
+     * The default error page is /index.html.
+     */
+    readonly errorPagePath?: string;
+
+    /**
+     * Optional. Enable Pipeline
      * Provide the ARN to your Secrets Manager secret.
      */
     readonly githubAccessTokenArn?: string;

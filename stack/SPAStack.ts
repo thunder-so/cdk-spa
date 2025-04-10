@@ -39,6 +39,7 @@ export class SPAStack extends Stack {
       domain: props.domain as string,
       globalCertificateArn: props.globalCertificateArn as string,
       hostedZoneId: props.hostedZoneId as string,
+      errorPagePath: props.errorPagePath,
       redirects: props.redirects,
       rewrites: props.rewrites,
       headers: props.headers,

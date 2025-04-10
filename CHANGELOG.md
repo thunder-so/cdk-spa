@@ -16,6 +16,20 @@ All notable changes to this project will be documented in this file.
 
 -
 
+## [0.18.0]
+
+### Added
+
+- errorPagePath
+
+### Changed
+
+- Refactored the CloudFront behaviors (default and static)
+
+### Removed
+
+- handle 403 error was redundant in CloudFront
+
 ## [0.17.0]
 
 ### Added
