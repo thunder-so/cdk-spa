@@ -43,9 +43,9 @@ export class DeployConstruct extends Construct {
       prune: false,
       distribution: props.Distribution,
       distributionPaths: ['/*'],
-      // metadata: {
-      //   revision: this.deploymentRevision,
-      // },
+      metadata: {
+        revision: new Date().toISOString(),
+      },
       memoryLimit: 1792
     });
   }

@@ -304,11 +304,9 @@ When you have a `buildspec.yml`, the `buildProps` configuration is not required.
 
 When using the Pipeline mode, you can provide build environment variables to AWS CodeBuild.
 
-Create a parameter in SSM Parameter Store:
+Create a secure parameter in SSM Parameter Store:
 
 ```bash
-aws ssm put-parameter --name "/my-app/API_URL" --type "String" --value "https://api.example.com"
-
 aws ssm put-parameter --name "/my-app/API_KEY" --type "SecureString" --value "your-secret-api-key"
 ```
 
