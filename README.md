@@ -57,7 +57,7 @@ Navigate to your project directory and install the package and its required depe
 Your `package.json` must also contain `tsx` and this specific version of `aws-cdk-lib`:
 
 ```bash
-npm i tsx aws-cdk-lib@2.150.0 @thunderso/cdk-spa --save-dev
+npm i tsx aws-cdk@2.150.0 aws-cdk-lib@2.150.0 @thunderso/cdk-spa --save-dev
 ```
 
 
@@ -93,17 +93,10 @@ const appStackProps: SPAProps = {
   service: 'your-service-id',
   environment: 'production',
 
-  // Your Github repository url contains https://github.com/<owner>/<repo>
-  sourceProps: {
-    owner: 'your-github-username',
-    repo: 'your-repo-name',
-    branchOrRef: 'main',
-    rootdir: '' // supports monorepos. e.g. frontend/
-  },
+  rootDir: '', // supports monorepos. e.g. frontend/
+  outputDir: 'dist/', // the build output directory with static files and assets
 
-  buildProps: {
-    outputdir: 'dist/' // the build output directory with static files and assets
-  }
+  // ,,, other props
 };
 
 new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);
@@ -249,19 +242,28 @@ Take note of the ARN.
 const appStackProps: SPAProps = {
   // ... other props
 
+  // Your Github repository url contains https://github.com/<owner>/<repo>
+  sourceProps: {
+    owner: 'your-github-username',
+    repo: 'your-repo-name',
+    branchOrRef: 'main',
+  },
+
+  // The ARN of the secret
+  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
+
+  // CodeBuild environment
   buildProps: {
     runtime: 'nodejs',
     runtime_version: '20',
     installcmd: 'npm ci',
     buildcmd: 'npm run build',
-    outputdir: 'dist/',
   },
 
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
 };
 ```
 
-- When using Pipeline mode, `runtime`, `runtime_version`, `installcmd` and `buildcmd` are mandatory for CodeBuild to function.
+- When using Pipeline mode, `sourceProps`, and `buildProps` are mandatory for CI/CD to function.
 
 - `runtime` and `runtime_version` supports all [CodeBuild runtime versions](https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html)
 

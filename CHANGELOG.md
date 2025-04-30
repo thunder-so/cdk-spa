@@ -16,6 +16,18 @@ All notable changes to this project will be documented in this file.
 
 -
 
+## [0.19.0]
+
+### Added
+
+- deploy: CacheControl
+
+### Changed
+
+- rootDir and outputDir at root level
+- pipeline: cloudfront invalidation changed from /* to /**
+- hosting: code refactor
+
 ## [0.18.0]
 
 ### Added

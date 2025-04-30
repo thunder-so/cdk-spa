@@ -26,8 +26,8 @@ export class SPAStack extends Stack {
       return path.replace(/^\/+|\/+$/g, '');
     };
 
-    const rootdir = sanitizePath(props.sourceProps.rootdir);
-    const outputdir = sanitizePath(props.buildProps?.outputdir);
+    const rootDir = sanitizePath(props.rootDir);
+    const outputDir = sanitizePath(props.outputDir);
 
     /**
      * Hosting the SPA with S3 and CloudFront
@@ -54,15 +54,16 @@ export class SPAStack extends Stack {
      * 
      */
     if (!props.githubAccessTokenArn) {
-      const deploy = new DeployConstruct(this, 'Deploy', {
+      new DeployConstruct(this, 'Deploy', {
+        debug: props.debug,
         resourceIdPrefix: resourceIdPrefix,
         HostingBucket: hosting.hostingBucket,
         Distribution: hosting.distribution,
-        sourceProps: {
-          rootdir: rootdir
-        },
+        rootDir: rootDir,
+        outputDir: outputDir,
         buildProps: {
-          outputdir: outputdir,
+          include: props.buildProps?.include as string[],
+          exclude: props.buildProps?.exclude as string[]
         }
       });
     }
@@ -73,12 +74,12 @@ export class SPAStack extends Stack {
      */ 
     else {
       // check for sourceProps
-      if (!props.sourceProps.owner || !props.sourceProps.repo || !props.sourceProps.branchOrRef) {
+      if (!props.sourceProps?.owner || !props.sourceProps?.repo || !props.sourceProps?.branchOrRef) {
         throw new Error('sourceProps owner, repo and branch/ref required.');
       }
 
       // check for buildProps
-      if (!props.buildProps?.runtime || !props.buildProps?.runtime_version || !props.buildProps?.installcmd || !props.buildProps?.buildcmd || !props.buildProps?.outputdir) {
+      if (!props.buildProps?.runtime || !props.buildProps?.runtime_version || !props.buildProps?.installcmd || !props.buildProps?.buildcmd) {
         throw new Error('buildProps runtime, runtime_version, installcmd, buildcmd and outputdir required when pipeline is enabled.');
       }
 
@@ -87,11 +88,12 @@ export class SPAStack extends Stack {
         resourceIdPrefix: resourceIdPrefix,
         HostingBucket: hosting.hostingBucket,
         Distribution: hosting.distribution,
+        rootDir: rootDir,
+        outputDir: outputDir,
         sourceProps: {
           owner: props.sourceProps?.owner, 
           repo: props.sourceProps?.repo, 
-          branchOrRef: props.sourceProps?.branchOrRef, 
-          rootdir: rootdir
+          branchOrRef: props.sourceProps?.branchOrRef,
         },
         githubAccessTokenArn: props.githubAccessTokenArn,
         buildSpecFilePath: props.buildSpecFilePath as string,
@@ -100,7 +102,6 @@ export class SPAStack extends Stack {
           runtime_version: props.buildProps?.runtime_version,
           installcmd: props.buildProps?.installcmd,
           buildcmd: props.buildProps?.buildcmd,
-          outputdir: outputdir,
           include: props.buildProps?.include as string[],
           exclude: props.buildProps?.exclude as string[]
         },

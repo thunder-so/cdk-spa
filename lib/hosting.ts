@@ -10,15 +10,15 @@ import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 
 export interface HostingProps {
-    debug?: boolean;
-    resourceIdPrefix: string;
-    domain?: string;
-    globalCertificateArn?: string;
-    hostedZoneId?: string;
-    errorPagePath?: string;
-    redirects?: { source: string; destination: string; }[];
-    rewrites?: { source: string; destination: string; }[];
-    headers?: { path: string; name: string; value: string; }[];
+    readonly debug?: boolean;
+    readonly resourceIdPrefix: string;
+    readonly domain?: string;
+    readonly globalCertificateArn?: string;
+    readonly hostedZoneId?: string;
+    readonly errorPagePath?: string;
+    readonly redirects?: { source: string; destination: string; }[];
+    readonly rewrites?: { source: string; destination: string; }[];
+    readonly headers?: { path: string; name: string; value: string; }[];
     readonly allowHeaders?: string[];
     readonly allowCookies?: string[];
     readonly allowQueryParams?: string[];
@@ -82,25 +82,14 @@ export class HostingConstruct extends Construct {
         },
       });
 
+      // create the S3 bucket for hosting
+      this.hostingBucket = this.createHostingBucket(props);
+
       /**
        * Lambda@edge
        */
-      // Create the execution role for Lambda@Edge
-      this.lambdaEdgeRole = new Role(this, 'LambdaEdgeExecutionRole', {
-        assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
-      });
-
-      this.lambdaEdgeRole.assumeRolePolicy?.addStatements(
-        new PolicyStatement({
-          effect: Effect.ALLOW,
-          principals: [new ServicePrincipal('edgelambda.amazonaws.com')],
-          actions: ['sts:AssumeRole'],
-        })
-      );
-
-      this.lambdaEdgeRole.addManagedPolicy(
-        ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-      );
+      // Create the Lambda@edge role
+      this.lambdaEdgeRole = this.createLambdaEdgeRole();
 
       // Create the redirects and rewrites function
       this.cloudFrontRedirectsRewrites = this.createCloudFrontRedirectsRewrites(props);
@@ -111,11 +100,8 @@ export class HostingConstruct extends Construct {
       }
 
       /**
-       * Create the infrastructure
+       * Create the CDN
        */
-      // create the S3 bucket for hosting
-      this.createHostingBucket(props);
-
       // Create the CloudFront distribution
       this.createCloudfrontDistribution(props);
 
@@ -140,6 +126,38 @@ export class HostingConstruct extends Construct {
         description: 'The URL of the CloudFront distribution',
         exportName: `${props.resourceIdPrefix}-CloudFrontDistributionUrl`,
       });
+    }
+
+    /**
+     * Create Lambda@edge Role
+     * @private
+     */
+    private createLambdaEdgeRole(): Role {
+      // Create the execution role for Lambda@Edge
+      const lambdaEdgeRole = new Role(this, 'LambdaEdgeExecutionRole', {
+        assumedBy: new ServicePrincipal('lambda.amazonaws.com'),
+      });
+
+      lambdaEdgeRole.assumeRolePolicy?.addStatements(
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          principals: [new ServicePrincipal('edgelambda.amazonaws.com')],
+          actions: ['sts:AssumeRole'],
+        })
+      );
+
+      lambdaEdgeRole.addManagedPolicy(
+        ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+      );
+
+      // Give the edge lambdas permission to access hosting bucket
+      lambdaEdgeRole.addToPolicy(new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: ['s3:GetObject'],
+        resources: [`${this.hostingBucket.bucketArn}/*`],
+      }));
+
+      return lambdaEdgeRole;
     }
 
     /**
@@ -316,7 +334,7 @@ export class HostingConstruct extends Construct {
      *
      * @private
      */
-    private createHostingBucket(props: HostingProps) {
+    private createHostingBucket(props: HostingProps): Bucket {
 
         // Hosting bucket access log bucket
         const originLogsBucket = props.debug
@@ -332,7 +350,7 @@ export class HostingConstruct extends Construct {
           : undefined;
 
         // primary hosting bucket
-        const bucket = new Bucket(this, "HostingBucket", {
+        const bucket = new Bucket(this, "Bucket", {
           bucketName: `${props.resourceIdPrefix}-hosting`,
           versioned: true,
           serverAccessLogsBucket: originLogsBucket,
@@ -370,14 +388,7 @@ export class HostingConstruct extends Construct {
           })
         );
 
-        // Give the edge lambdas permission to access hosting bucket
-        this.lambdaEdgeRole.addToPolicy(new PolicyStatement({
-          effect: Effect.ALLOW,
-          actions: ['s3:GetObject'],
-          resources: [`${bucket.bucketArn}/*`],
-        }));
-
-        this.hostingBucket = bucket;
+        return bucket;
     }
 
     /**

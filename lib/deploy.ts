@@ -1,6 +1,6 @@
-import { StackProps } from 'aws-cdk-lib';
+import { StackProps, Duration } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
+import { BucketDeployment, Source, CacheControl } from 'aws-cdk-lib/aws-s3-deployment';
 import { type IBucket } from "aws-cdk-lib/aws-s3";
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
 
@@ -11,15 +11,13 @@ export interface DeployProps extends StackProps {
     // Objects from HostingConstruct
     HostingBucket: IBucket;
     Distribution: IDistribution;
+
+    // Directories
+    rootDir: string;
+    outputDir: string;
   
-    // source
-    sourceProps: {
-      rootdir: string;
-    };
-  
-    // build
+    // Build
     buildProps?: {
-      outputdir: string;
       include?: string[];
       exclude?: string[];
     };
@@ -30,9 +28,7 @@ export class DeployConstruct extends Construct {
     super(scope, id);
 
     // Construct the full path to the build output directory
-    const assetPath = props.sourceProps.rootdir
-      ? `${props.sourceProps.rootdir}/${props.buildProps?.outputdir}`
-      : props.buildProps?.outputdir || '.';
+    const assetPath = `${props.rootDir || '.'}/${props.outputDir || ''}`;
       
     // Create the S3 deployment
     new BucketDeployment(this, 'DeployAssets', {
@@ -42,7 +38,12 @@ export class DeployConstruct extends Construct {
       destinationBucket: props.HostingBucket,
       prune: false,
       distribution: props.Distribution,
-      distributionPaths: ['/*'],
+      distributionPaths: ['/**'],
+      cacheControl: [
+        CacheControl.setPublic(),
+        CacheControl.maxAge(Duration.days(365)),
+        CacheControl.fromString('immutable'),
+      ],
       metadata: {
         revision: new Date().toISOString(),
       },

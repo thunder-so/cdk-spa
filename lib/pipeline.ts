@@ -17,23 +17,27 @@ export interface PipelineProps {
   HostingBucket: IBucket;
   Distribution: IDistribution;
 
-  // source
+  // Directories
+  rootDir: string;
+  outputDir: string;
+
+  // GitHub Access Token
+  githubAccessTokenArn: string;
+
+  // Source
   sourceProps: {
     owner: string;
     repo: string;
     branchOrRef: string;
-    rootdir: string;
   };
-  githubAccessTokenArn: string;
 
-  // build
+  // Build
   buildSpecFilePath?: string;
   buildProps?: {
     runtime: string;
     runtime_version: string|number;
     installcmd: string;
     buildcmd: string;
-    outputdir: string;
     include: string[];
     exclude: string[];
   };
@@ -140,7 +144,7 @@ export class PipelineConstruct extends Construct {
             // 'echo "Output Bucket: $OUTPUT_BUCKET"',
             // 'echo "Hosting Bucket: $HOSTING_BUCKET"',
             'aws s3 cp s3://$OUTPUT_BUCKET/$COMMIT_ID/ s3://$HOSTING_BUCKET/ --recursive --metadata revision=$COMMIT_ID',
-            'aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/*"'
+            'aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/**"'
           ],
         },
       },
@@ -258,7 +262,7 @@ export class PipelineConstruct extends Construct {
                   [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '20'
                 },
                 commands: [ 
-                  `cd ${props.sourceProps?.rootdir || './'}`,
+                  ...(props.rootDir ? [`cd ${props.rootDir}`] : []),
                   props.buildProps?.installcmd || 'npm install'
                 ]
             },
@@ -277,9 +281,7 @@ export class PipelineConstruct extends Construct {
                 ? props.buildProps.exclude.map((pattern) => `!${pattern}`)
                 : []),
             ],
-            'base-directory': props.sourceProps.rootdir
-              ? `${props.sourceProps.rootdir}/${props.buildProps?.outputdir || ''}`
-              : props.buildProps?.outputdir || '.' 
+            'base-directory': `${props.rootDir || '.'}/${props.outputDir || ''}`,
         }
       })
     }

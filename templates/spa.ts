@@ -12,17 +12,8 @@ const appStackProps: SPAProps = {
   service: 'your-service-id',
   environment: 'production',
 
-  // Your Github repository url contains https://github.com/<owner>/<repo>
-  sourceProps: {
-    owner: 'your-github-username',
-    repo: 'your-repo-name',
-    branchOrRef: 'main',
-    rootdir: ''
-  },
-
-  buildProps: {
-    outputdir: 'dist/'
-  },
+  rootDir: '',
+  outputDir: 'dist/',
 };
 
 new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);

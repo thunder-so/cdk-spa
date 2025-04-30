@@ -5,7 +5,7 @@ export interface SPAProps extends StackProps {
     /**
      * Debug
      */
-    readonly debug: boolean;
+    readonly debug?: boolean;
 
     /**
      * The AWS environment (account/region) where this stack will be deployed.
@@ -32,16 +32,25 @@ export interface SPAProps extends StackProps {
      * A string to identify the environment of the app.
      */
     readonly environment: string;
+
+    readonly rootDir: string;
+    readonly outputDir: string;
   
     /**
      * Configure your Github repository
      */
-    readonly sourceProps: {
+    readonly sourceProps?: {
       owner?: string;
       repo?: string;
       branchOrRef?: string;
-      rootdir: string|undefined;
+      // rootdir: string|undefined;
     };
+  
+    /**
+     * Optional. Enable Pipeline
+     * Provide the ARN to your Secrets Manager secret.
+     */
+    readonly githubAccessTokenArn?: string;
   
     /**
      * If you provide a buildSpec file, skip this.
@@ -51,10 +60,16 @@ export interface SPAProps extends StackProps {
       runtime_version?: string|number;
       installcmd?: string;
       buildcmd?: string;
-      outputdir?: string;
+      // outputdir?: string;
       include?: string[];
       exclude?: string[];
     };
+
+    /**
+     * Optional. Works only when githubAccessTokenArn is provided.
+     * If you have a custom buildspec.yml file for your app, provide the relative path to the file.
+     */
+    readonly buildSpecFilePath?: string;
 
     /**
      * Optional. The path to the error page in the output directory. e.g. /404.html
@@ -62,18 +77,6 @@ export interface SPAProps extends StackProps {
      * The default error page is /index.html.
      */
     readonly errorPagePath?: string;
-
-    /**
-     * Optional. Enable Pipeline
-     * Provide the ARN to your Secrets Manager secret.
-     */
-    readonly githubAccessTokenArn?: string;
-  
-    /**
-     * Optional. Works only when githubAccessTokenArn is provided.
-     * If you have a custom buildspec.yml file for your app, provide the relative path to the file.
-     */
-    readonly buildSpecFilePath?: string;
 
     /**
      * Optional. Works only when githubAccessTokenArn is provided.
