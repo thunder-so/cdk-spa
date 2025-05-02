@@ -102,6 +102,8 @@ const appStackProps: SPAProps = {
 new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);
 ```
 
+The `rootDir` and `outputDir` are concatenated.
+
 ## Deploy
 
 By running the following script, the CDK stack will be deployed to AWS.
@@ -242,15 +244,15 @@ Take note of the ARN.
 const appStackProps: SPAProps = {
   // ... other props
 
+  // The ARN of the secret
+  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
+
   // Your Github repository url contains https://github.com/<owner>/<repo>
   sourceProps: {
     owner: 'your-github-username',
     repo: 'your-repo-name',
     branchOrRef: 'main',
   },
-
-  // The ARN of the secret
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
 
   // CodeBuild environment
   buildProps: {

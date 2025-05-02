@@ -358,19 +358,15 @@ export class PipelineConstruct extends Construct {
    */
   private createPipeline(props: PipelineProps): Pipeline {
 
-    let artifactBucket: Bucket | undefined;
-
     // build artifact bucket
-    if (props.debug) {
-      artifactBucket = new Bucket(this, "ArtifactBucket", {
-        bucketName: `${props.resourceIdPrefix}-artifacts`,
-        encryption: BucketEncryption.S3_MANAGED,
-        blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-        enforceSSL: true,
-        removalPolicy: RemovalPolicy.DESTROY,
-        autoDeleteObjects: true,
-      });
-    }
+    const artifactBucket = new Bucket(this, "ArtifactBucket", {
+      bucketName: `${props.resourceIdPrefix}-artifacts`,
+      encryption: BucketEncryption.S3_MANAGED,
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
 
     // setup the pipeline
     const pipeline = new Pipeline(this, "Pipeline", {
