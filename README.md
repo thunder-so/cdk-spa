@@ -54,10 +54,10 @@ This package uses the `npm` package manager and is an ES6+ Module.
 
 Navigate to your project directory and install the package and its required dependencies. 
 
-Your `package.json` must also contain `tsx` and this specific version of `aws-cdk-lib`:
+Your `package.json` must also contain `tsx` and the latest version of `aws-cdk-lib`:
 
 ```bash
-npm i tsx aws-cdk@2.150.0 aws-cdk-lib@2.150.0 @thunderso/cdk-spa --save-dev
+npm i tsx aws-cdk-lib @thunderso/cdk-spa --save-dev
 ```
 
 
@@ -80,11 +80,11 @@ You should adapt the file to your project's needs.
 > Use different filenames such as `production.ts` and `testing.ts` for environments.
 
 ```ts
-//stack/index.ts
+// stack/index.ts
 import { App } from "aws-cdk-lib";
 import { SPAStack, type SPAProps } from "@thunderso/cdk-spa";
 
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   env: {
     account: 'your-account-id',
     region: 'us-east-1'
@@ -96,10 +96,14 @@ const appStackProps: SPAProps = {
   rootDir: '', // supports monorepos. e.g. frontend/
   outputDir: 'dist/', // the build output directory with static files and assets
 
-  // ,,, other props
+  // ... other props
 };
 
-new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);
+new SPAStack(
+  new App(), 
+  `${stackProps.application}-${stackProps.service}-${stackProps.environment}-stack`, 
+  stackProps
+);
 ```
 
 The `rootDir` and `outputDir` are concatenated.
@@ -173,7 +177,7 @@ Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as repository secrets in Git
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   // Optional: Domain settings
@@ -241,7 +245,7 @@ Take note of the ARN.
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   // The ARN of the secret
@@ -293,7 +297,7 @@ artifacts:
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   buildSpecFilePath: 'buildspec.yml',
@@ -318,7 +322,7 @@ Pass environment variables to your build, for example, to inject configuration o
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   buildEnvironmentVariables: [
@@ -349,7 +353,7 @@ HTTP Status Codes: This library uses `301 (Moved Permanently)`.
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   redirects: [
@@ -378,7 +382,7 @@ A URL rewrite modifies the URL path internally on the server without changing th
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   rewrites: [
@@ -406,7 +410,7 @@ For example, you can set caching policies with `Cache-Control`, enforce security
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   headers: [
@@ -488,7 +492,7 @@ You can specify a custom error page to handle `404 Not Found` errors by setting 
 **Example Configuration:**
 
 ```ts stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   // Optional: Custom error page
@@ -502,7 +506,7 @@ You can fine-tune CloudFront's caching behavior by specifying which `headers`, `
 
 ```ts
 // stack/index.ts
-const appStackProps: SPAProps = {
+const stackProps: SPAProps = {
   // ... other props
 
   // Customize cache behavior

@@ -2,8 +2,8 @@ import { Aws, Duration, RemovalPolicy, CfnOutput } from 'aws-cdk-lib';
 import { Construct } from "constructs";
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Role, PolicyStatement, Effect, ServicePrincipal, AnyPrincipal, ManagedPolicy } from "aws-cdk-lib/aws-iam";
-import { S3Origin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { Distribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, CachedMethods, LambdaEdgeEventType, experimental, OriginRequestPolicy, OriginRequestHeaderBehavior, OriginRequestCookieBehavior, OriginRequestQueryStringBehavior, OriginProtocolPolicy } from "aws-cdk-lib/aws-cloudfront";
+import { Distribution, CachePolicy, SecurityPolicyProtocol, HttpVersion, ResponseHeadersPolicy, HeadersFrameOption, HeadersReferrerPolicy, type BehaviorOptions, AllowedMethods, ViewerProtocolPolicy, CacheCookieBehavior, CacheHeaderBehavior, CacheQueryStringBehavior, CfnOriginAccessControl, CachedMethods, LambdaEdgeEventType, AccessLevel, IOrigin, experimental } from "aws-cdk-lib/aws-cloudfront";
+import { S3BucketOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
@@ -45,7 +45,7 @@ export class HostingConstruct extends Construct {
     /**
      * The CloudFront distribution origin that routes to S3 HTTP server.
      */
-    private s3Origin: S3Origin;
+    private s3Origin: IOrigin;
 
     /**
      * The OAC constructs created for the S3 origin.
@@ -71,17 +71,6 @@ export class HostingConstruct extends Construct {
     constructor(scope: Construct, id: string, props: HostingProps) {
       super(scope, id);
 
-      // Create the Origin Access Control
-      this.originAccessControl = new CfnOriginAccessControl(this, 'CloudFrontOac', {
-        originAccessControlConfig: {
-          name: `${props.resourceIdPrefix}-OAC`,
-          description: `Origin Access Control for ${props.resourceIdPrefix}`,
-          originAccessControlOriginType: 's3',
-          signingBehavior: 'always',
-          signingProtocol: 'sigv4',
-        },
-      });
-
       // create the S3 bucket for hosting
       this.hostingBucket = this.createHostingBucket(props);
 
@@ -103,7 +92,22 @@ export class HostingConstruct extends Construct {
        * Create the CDN
        */
       // Create the CloudFront distribution
-      this.createCloudfrontDistribution(props);
+      this.distribution = this.createCloudfrontDistribution(props);
+
+      // Grant CloudFront permission to get the objects from the s3 bucket origin
+      this.hostingBucket.addToResourcePolicy(
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: ['s3:GetObject'], // 's3:ListBucket' slows down deployment
+          principals: [new ServicePrincipal('cloudfront.amazonaws.com')],
+          resources: [`${this.hostingBucket.bucketArn}/*`],
+          conditions: {
+            StringEquals: {
+              'AWS:SourceArn': `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:distribution/${this.distribution.distributionId}`
+            }
+          }
+        })
+      );
 
       // Set the domains with Route53
       if(props.domain && props.globalCertificateArn && props.hostedZoneId) {
@@ -126,6 +130,85 @@ export class HostingConstruct extends Construct {
         description: 'The URL of the CloudFront distribution',
         exportName: `${props.resourceIdPrefix}-CloudFrontDistributionUrl`,
       });
+    }
+
+    /**
+     * Creates the bucket to store the static deployment asset files of your site.
+     *
+     * @private
+     */
+    private createHostingBucket(props: HostingProps): Bucket {
+
+        // Hosting bucket access log bucket
+        const originLogsBucket = props.debug
+          ? new Bucket(this, "OriginLogsBucket", {
+            bucketName: `${props.resourceIdPrefix}-origin-logs`,
+            encryption: BucketEncryption.S3_MANAGED,
+            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+            objectOwnership: ObjectOwnership.OBJECT_WRITER,
+            enforceSSL: true,
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true
+          })
+          : undefined;
+
+        // primary hosting bucket
+        const bucket = new Bucket(this, "Bucket", {
+          bucketName: `${props.resourceIdPrefix}-hosting`,
+          versioned: true,
+          serverAccessLogsBucket: originLogsBucket,
+          enforceSSL: true,
+          encryption: BucketEncryption.S3_MANAGED,
+          blockPublicAccess: new BlockPublicAccess({
+            blockPublicPolicy: true,
+            blockPublicAcls: true,
+            ignorePublicAcls: true,
+            restrictPublicBuckets: true,
+          }),
+          removalPolicy: RemovalPolicy.RETAIN
+        });
+
+        // Setting the origin to HTTP server
+        // this.s3Origin = new S3Origin(bucket, {
+        //   connectionAttempts: 2,
+        //   connectionTimeout: Duration.seconds(3),
+        //   originId: `${props.resourceIdPrefix}-s3origin`
+        // });
+
+        // Create the Origin Access Control
+        this.originAccessControl = new CfnOriginAccessControl(this, 'CloudFrontOac', {
+          originAccessControlConfig: {
+            name: `${props.resourceIdPrefix}-OAC`,
+            description: `Origin Access Control for ${props.resourceIdPrefix}`,
+            originAccessControlOriginType: 's3',
+            signingBehavior: 'always',
+            signingProtocol: 'sigv4',
+          },
+        });
+
+        this.s3Origin = S3BucketOrigin.withOriginAccessControl(bucket, {
+          originId: `${props.resourceIdPrefix}-s3origin`,
+          originAccessLevels: [ AccessLevel.READ ],
+          originAccessControlId: this.originAccessControl?.attrId,
+        });
+
+        // Update the bucket policy to allow access from CloudFront via OAC
+        bucket.addToResourcePolicy(
+          new PolicyStatement({
+            effect: Effect.ALLOW,
+            actions: ['s3:GetObject'],
+            principals: [new AnyPrincipal()],
+            resources: [`${bucket.bucketArn}/*`],
+            conditions: {
+              StringEquals: {
+                'AWS:SourceArn': `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:origin-access-control/${this.originAccessControl?.attrId}`,
+                'aws:SourceAccount': Aws.ACCOUNT_ID,
+              },
+            },
+          })
+        );
+
+        return bucket;
     }
 
     /**
@@ -161,9 +244,9 @@ export class HostingConstruct extends Construct {
     }
 
     /**
-     * Create a CloudFront Function for Redirects and Rewrites
+     * Create a Lambda@Edge Function for Redirects and Rewrites
      * @param props HostingProps
-     * @returns cloudfront function
+     * 
      */
     // Helper function to escape special regex characters
     private escapeRegex = (string: string) => {
@@ -272,9 +355,9 @@ export class HostingConstruct extends Construct {
     }
 
     /**
-     * Create a CloudFront Function for Custom Headers
+     * Create a Lambda@Edge Function for Custom Headers
      * @param props HostingProps
-     * @returns cloudfront function
+     * 
      */
     private createCloudFrontHeaders(props: HostingProps): experimental.EdgeFunction {
       const headers = props.headers || [];
@@ -330,73 +413,11 @@ export class HostingConstruct extends Construct {
     }
 
     /**
-     * Creates the bucket to store the static deployment asset files of your site.
-     *
-     * @private
-     */
-    private createHostingBucket(props: HostingProps): Bucket {
-
-        // Hosting bucket access log bucket
-        const originLogsBucket = props.debug
-          ? new Bucket(this, "OriginLogsBucket", {
-            bucketName: `${props.resourceIdPrefix}-origin-logs`,
-            encryption: BucketEncryption.S3_MANAGED,
-            blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-            objectOwnership: ObjectOwnership.OBJECT_WRITER,
-            enforceSSL: true,
-            removalPolicy: RemovalPolicy.DESTROY,
-            autoDeleteObjects: true
-          })
-          : undefined;
-
-        // primary hosting bucket
-        const bucket = new Bucket(this, "Bucket", {
-          bucketName: `${props.resourceIdPrefix}-hosting`,
-          versioned: true,
-          serverAccessLogsBucket: originLogsBucket,
-          enforceSSL: true,
-          encryption: BucketEncryption.S3_MANAGED,
-          blockPublicAccess: new BlockPublicAccess({
-            blockPublicPolicy: true,
-            blockPublicAcls: true,
-            ignorePublicAcls: true,
-            restrictPublicBuckets: true,
-          }),
-          removalPolicy: RemovalPolicy.RETAIN
-        });
-
-        // Setting the origin to HTTP server
-        this.s3Origin = new S3Origin(bucket, {
-          connectionAttempts: 2,
-          connectionTimeout: Duration.seconds(3),
-          originId: `${props.resourceIdPrefix}-s3origin`
-        });
-
-        // Update the bucket policy to allow access from the OAC
-        bucket.addToResourcePolicy(
-          new PolicyStatement({
-            effect: Effect.ALLOW,
-            actions: ['s3:GetObject'],
-            principals: [new AnyPrincipal()],
-            resources: [`${bucket.bucketArn}/*`],
-            conditions: {
-              StringEquals: {
-                'AWS:SourceArn': `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:origin-access-control/${this.originAccessControl?.attrId}`,
-                'aws:SourceAccount': Aws.ACCOUNT_ID,
-              },
-            },
-          })
-        );
-
-        return bucket;
-    }
-
-    /**
      * Create the primary cloudfront distribution
      * @param props 
      * @private
      */
-    private createCloudfrontDistribution(props: HostingProps) {
+    private createCloudfrontDistribution(props: HostingProps): Distribution {
 
         // access logs bucket
         this.accessLogsBucket = props.debug
@@ -420,7 +441,8 @@ export class HostingConstruct extends Construct {
           comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           securityHeadersBehavior: {              
             contentSecurityPolicy: {
-              contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+              // contentSecurityPolicy: "default-src 'self'; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+              contentSecurityPolicy: "default-src 'self'; style-src https: 'unsafe-inline'; script-src https: 'unsafe-inline' 'wasm-unsafe-eval'; font-src https: 'unsafe-inline'; connect-src https: wss: 'unsafe-inline'; img-src https: data:; base-uri 'self'; form-action 'self';",
               override: true,
             },
             strictTransportSecurity: {
@@ -577,22 +599,7 @@ export class HostingConstruct extends Construct {
         }
 
         // Creating CloudFront distribution
-        this.distribution = new Distribution(this, distributionName, distributionProps);
-
-        // Grant CloudFront permission to get the objects from the s3 bucket origin
-        this.hostingBucket.addToResourcePolicy(
-          new PolicyStatement({
-            effect: Effect.ALLOW,
-            actions: ['s3:GetObject'], // 's3:ListBucket' slows down deployment
-            principals: [new ServicePrincipal('cloudfront.amazonaws.com')],
-            resources: [`${this.hostingBucket.bucketArn}/*`],
-            conditions: {
-              StringEquals: {
-                'AWS:SourceArn': `arn:aws:cloudfront::${Aws.ACCOUNT_ID}:distribution/${this.distribution.distributionId}`
-              }
-            }
-          })
-        );
+        return new Distribution(this, distributionName, distributionProps);
     }
 
     /**

@@ -43,7 +43,6 @@ export interface SPAProps extends StackProps {
       owner?: string;
       repo?: string;
       branchOrRef?: string;
-      // rootdir: string|undefined;
     };
   
     /**
