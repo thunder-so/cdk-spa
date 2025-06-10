@@ -92,7 +92,7 @@ export class HostingConstruct extends Construct {
        * Create the CDN
        */
       // Create the CloudFront distribution
-      this.distribution = this.createCloudfrontDistribution(props);
+      this.distribution = this.createCloudFrontDistribution(props);
 
       // Grant CloudFront permission to get the objects from the s3 bucket origin
       this.hostingBucket.addToResourcePolicy(
@@ -417,7 +417,7 @@ export class HostingConstruct extends Construct {
      * @param props 
      * @private
      */
-    private createCloudfrontDistribution(props: HostingProps): Distribution {
+    private createCloudFrontDistribution(props: HostingProps): Distribution {
 
         // access logs bucket
         this.accessLogsBucket = props.debug
@@ -570,8 +570,6 @@ export class HostingConstruct extends Construct {
          * Create CloudFront Distribution
          * 
          */
-        const distributionName = `${props.resourceIdPrefix}-cdn`;
-
         const distributionProps = {
           comment: "Stack name: " + Aws.STACK_NAME,
           enableLogging: props.debug ? true : false,
@@ -599,7 +597,7 @@ export class HostingConstruct extends Construct {
         }
 
         // Creating CloudFront distribution
-        return new Distribution(this, distributionName, distributionProps);
+        return new Distribution(this, 'CDN', distributionProps);
     }
 
     /**

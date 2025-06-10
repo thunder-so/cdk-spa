@@ -61,10 +61,11 @@ export class SPAStack extends Stack {
         Distribution: hosting.distribution,
         rootDir: rootDir,
         outputDir: outputDir,
-        buildProps: {
-          include: props.buildProps?.include as string[],
-          exclude: props.buildProps?.exclude as string[]
-        }
+        // buildProps: {
+        //   include: props.buildProps?.include as string[],
+        //   exclude: props.buildProps?.exclude as string[]
+        // },
+        buildProps: props.buildProps,
       });
     }
 
@@ -103,9 +104,11 @@ export class SPAStack extends Stack {
           installcmd: props.buildProps?.installcmd,
           buildcmd: props.buildProps?.buildcmd,
           include: props.buildProps?.include as string[],
-          exclude: props.buildProps?.exclude as string[]
+          exclude: props.buildProps?.exclude as string[],
+          environment: props.buildProps?.environment as { [key: string]: string }[],
+          secrets: props.buildProps?.secrets as { key: string; resource: string }[]
         },
-        buildEnvironmentVariables: props.buildEnvironmentVariables as { key: string; resource: string }[]
+        // buildEnvironmentVariables: props.buildEnvironmentVariables as { key: string; resource: string }[]
       });
     
       // Pipeline events

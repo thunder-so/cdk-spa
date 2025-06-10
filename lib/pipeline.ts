@@ -40,8 +40,10 @@ export interface PipelineProps {
     buildcmd: string;
     include: string[];
     exclude: string[];
+    environment?: { [key: string]: string; }[];
+    secrets?: { key: string; resource: string; }[];
   };
-  buildEnvironmentVariables: { key: string; resource: string; }[],
+  // buildEnvironmentVariables: { key: string; resource: string; }[],
 }
 
 export class PipelineConstruct extends Construct {
@@ -286,13 +288,29 @@ export class PipelineConstruct extends Construct {
       })
     }
 
-    // environment variables
-    const buildEnvironmentVariables: Record<string, BuildEnvironmentVariable> = (props.buildEnvironmentVariables || []).reduce(
-      (acc: Record<string, BuildEnvironmentVariable>, { key, resource }) => {
-        acc[key] = { value: resource, type: BuildEnvironmentVariableType.PARAMETER_STORE };
-        return acc;
-      }, {}
-    );
+    // environment variables and secrets
+    const buildEnvironmentVariables: Record<string, BuildEnvironmentVariable> = {
+      // Add plaintext environment variables
+      ...(props.buildProps?.environment
+        ? Object.fromEntries(
+            Object.entries(
+              Object.assign({}, ...(props.buildProps.environment))
+            ).map(([key, value]) => [
+              key,
+              { value, type: BuildEnvironmentVariableType.PLAINTEXT },
+            ])
+          )
+        : {}),
+      // Add secrets from SSM Parameter Store
+      ...(props.buildProps?.secrets
+        ? Object.fromEntries(
+            props.buildProps.secrets.map(({ key, resource }) => [
+              key,
+              { value: resource, type: BuildEnvironmentVariableType.PARAMETER_STORE },
+            ])
+          )
+        : {}),
+    };
     
     // create the cloudbuild project
     const project = new PipelineProject(this, "CodeBuildProject", {

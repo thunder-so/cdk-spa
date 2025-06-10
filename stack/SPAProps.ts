@@ -59,9 +59,10 @@ export interface SPAProps extends StackProps {
       runtime_version?: string|number;
       installcmd?: string;
       buildcmd?: string;
-      // outputdir?: string;
       include?: string[];
       exclude?: string[];
+      readonly environment?: Array<{ [key: string]: string; }>;
+      readonly secrets?: { key: string; resource: string; }[];
     };
 
     /**
@@ -86,7 +87,7 @@ export interface SPAProps extends StackProps {
      *     { key: 'PUBLIC_EXAMPLE', resource: '/path-to/your-parameter' }
      *   ]
      */
-    readonly buildEnvironmentVariables?: { key: string; resource: string; }[];
+    // readonly buildEnvironmentVariables?: { key: string; resource: string; }[];
    
 
     /**

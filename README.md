@@ -310,7 +310,11 @@ When you have a `buildspec.yml`, the `buildProps` configuration is not required.
 
 ## Optional: Build environment variables
 
-When using the Pipeline mode, you can provide build environment variables to AWS CodeBuild.
+When using the Pipeline mode, you can provide build environment variables to AWS CodeBuild. 
+
+1. Environment variables: string key and value pair.
+
+2. Secrets stored in SSM Parameter Store as secure string:
 
 Create a secure parameter in SSM Parameter Store:
 
@@ -325,19 +329,26 @@ Pass environment variables to your build, for example, to inject configuration o
 const stackProps: SPAProps = {
   // ... other props
 
-  buildEnvironmentVariables: [
-    { key: 'API_URL', resource: '/my-app/API_URL' },
-    { key: 'API_KEY', resource: '/my-app/API_KEY' },
-  ],
+  buildProps: {
+    // ... other props
 
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:0123456789000:secret:your-secret-name-XXXXX',
+    environment: [
+      { VITE_API_URL: 'https://api.example.com' },
+      { VITE_ANALYTICS_ID: 'UA-XXXXXX' }
+    ],
+
+    secrets: [
+      { key: 'API_URL', resource: '/my-app/API_URL' },
+      { key: 'API_KEY', resource: '/my-app/API_KEY' },
+    ],
+  }
 };
 ```
 
 The library automatically adds the necessary permissions to the CodeBuild project's role to read parameters from SSM Parameter Store.
 
 > [!NOTE]
-> Be cautious when using environment variables. Ensure that any API keys or secrets included are safe to expose publicly.
+> Be cautious when using environment variables. Ensure that any keys values included are safe to commit to your repository. For sensitive variables, use secrets.
 
 
 # Advanced: Configure Redirects and Rewrites
