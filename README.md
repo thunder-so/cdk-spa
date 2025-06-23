@@ -9,6 +9,16 @@
 
 Deploy any client-side Single Page Application (SPA) on AWS from Github with CI/CD.
 
+
+## Features
+
+- Fast responses from [CloudFront](https://aws.amazon.com/cloudfront/)
+- Automatic upload of the build files and static assets to [S3](https://aws.amazon.com/s3/) with optimized caching rules
+- Publicly available by a custom domain (or subdomain) via [Route53](https://aws.amazon.com/route53/) and SSL via [Certificate Manager](https://aws.amazon.com/certificate-manager/)
+- Custom HTTP response headers, URL Redirects and Rewrites using [Lambda@Edge](https://aws.amazon.com/lambda/edge/)
+- Build and deploy with [Github Actions](https://docs.github.com/en/actions)
+- Optional: Automatic build and deploy with [CodeBuild](https://aws.amazon.com/codebuild/) and [CodePipeline](https://aws.amazon.com/codepipeline/) using Github access token.
+
 Supported frameworks:
 
 - [Astro (SSG mode)](https://astro.build/)
@@ -19,22 +29,13 @@ Supported frameworks:
 - [React Router (client-side and static prerendering)](https://reactrouter.com/start/framework/rendering)
 - Any static site generator (SSG) framework
 
-AWS resources:
-
-- Fast responses from [CloudFront](https://aws.amazon.com/cloudfront/)
-- Automatic upload of the build files and static assets to [S3](https://aws.amazon.com/s3/) with optimized caching rules
-- Publicly available by a custom domain (or subdomain) via [Route53](https://aws.amazon.com/route53/) and SSL via [Certificate Manager](https://aws.amazon.com/certificate-manager/)
-- Custom HTTP response headers, URL Redirects and Rewrites using [Lambda@Edge](https://aws.amazon.com/lambda/edge/)
-- Build and deploy with [Github Actions](https://docs.github.com/en/actions)
-- Optional automatic build and deploy with [CodeBuild](https://aws.amazon.com/codebuild/) and [CodePipeline](https://aws.amazon.com/codepipeline/) from [Github](https://github.com/) repository using Access Token.
-
 
 ## Prerequisites
 
 You need an [AWS account](https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/) to create and deploy the required resources for the site on AWS.
 
 Before you begin, make sure you have the following:
-  - Node.js and npm: Ensure you have Node.js (v18 or later) and npm installed.
+  - Node.js and npm: Ensure you have Node.js (v20 or later) and npm installed.
   - AWS CLI: Install and configure the AWS Command Line Interface.
 
   - AWS CDK: Install the AWS CDK globally
@@ -81,8 +82,7 @@ You should adapt the file to your project's needs.
 
 ```ts
 // stack/index.ts
-import { App } from "aws-cdk-lib";
-import { SPAStack, type SPAProps } from "@thunderso/cdk-spa";
+import { Cdk, SPAStack, type SPAProps } from "@thunderso/cdk-spa";
 
 const stackProps: SPAProps = {
   env: {
@@ -100,7 +100,7 @@ const stackProps: SPAProps = {
 };
 
 new SPAStack(
-  new App(), 
+  new Cdk.App(), 
   `${stackProps.application}-${stackProps.service}-${stackProps.environment}-stack`, 
   stackProps
 );
@@ -108,24 +108,16 @@ new SPAStack(
 
 The `rootDir` and `outputDir` are concatenated.
 
-## Deploy
+# Deploy
 
 By running the following script, the CDK stack will be deployed to AWS.
 
 ```bash
-npx cdk deploy --require-approval never --all --app="npx tsx stack/index.ts" 
-```
-
-## Destroy the Stack
-
-If you want to destroy the stack and all its resources (including storage, e.g., access logs), run the following script:
-
-```bash
-npx cdk destroy --require-approval never --all --app="npx tsx stack/index.ts" 
+npx cdk deploy --all --app="npx tsx stack/index.ts" 
 ```
 
 
-# Deploy using GitHub Actions
+## Deploy using GitHub Actions
 
 In your GitHub repository, add a new workflow file under `.github/workflows/deploy.yml` with the following content:
 
@@ -162,6 +154,15 @@ jobs:
 Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as repository secrets in GitHub. These should be the access key and secret for an IAM user with permissions to deploy your stack.
 
 
+## Destroy the Stack
+
+If you want to destroy the stack and all its resources (including storage, e.g., access logs), run the following script:
+
+```bash
+npx cdk destroy --app="npx tsx stack/index.ts" 
+```
+
+
 # Manage Domain with Route53
 
 1. [Create a hosted zone in Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/AboutHZWorkingWith.html) for the desired domain, if you don't have one yet.
@@ -188,167 +189,6 @@ const stackProps: SPAProps = {
   globalCertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/abcd1234-abcd-1234-abcd-1234abcd1234',
 };
 ```
-
-
-# Advanced: Enabling AWS CodePipeline and CodeBuild
-
-If you prefer to use AWS CodePipeline and CodeBuild for automatic deployment instead of Github Actions, you can enable this by providing a GitHub Personal Access Token stored in AWS Secrets Manager.
-
-## 1. Create GitHub Personal Access Token
-
-[Create a Github Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) for your Github account. This token must be kept secure.
-
-Here's how to create a GitHub Personal Access Token (PAT):
-
-  - Go to your GitHub account settings.
-  - Navigate to Developer settings > Personal access tokens.
-  - Click on Generate new token.
-  - Choose Tokens (classic).
-  - Give the token a descriptive name.
-  - Set the expiration to No expiration (ignore the warning, for now).
-   Select the scopes (permissions):
-      - `repo`: Full control of private repositories.
-      - `admin:repo_hook`: Full control of repository hooks.
-  - Click Generate token.
-
-> [!NOTE]
-> Copy the token immediately and store it securely. You won't be able to see it again. If you lose it, you'll need to generate a new one.
-
-## 2. Store the Token in AWS Secrets Manager
-
-[Create a Secrets Manager secret](https://docs.aws.amazon.com/secretsmanager/latest/userguide/manage_create-basic-secret.html) as `plaintext` with the Personal Access Token you created earlier. Note the `ARN` of the secret. E.g. `arn:aws:secretsmanager:<REGION_NAME>:<ACCOUNT_ID>:secret:<secret-name>`.
-
-Use the AWS CLI to create a new secret in AWS Secrets Manager:
-
-```bash
-aws secretsmanager create-secret --name your-secret-name --secret-string your-token
-```
-
-- Replace your-secret-name with a name for your secret.
-- Replace your-token with your actual GitHub token.
-- The command will return something like this:
-```json
-{
-    "ARN": "arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX",
-    "Name": "your-secret-name",
-    "VersionId": "b1a532d2-4434-42a3-9283-41581be07455"
-}
-```
-
-Take note of the ARN.
-
-> [!IMPORTANT]
-> Storing secrets in AWS Secrets Manager will incur a cost (around $0.40 per month).
-
-
-## 3. Configure stack
-
-```ts
-// stack/index.ts
-const stackProps: SPAProps = {
-  // ... other props
-
-  // The ARN of the secret
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
-
-  // Your Github repository url contains https://github.com/<owner>/<repo>
-  sourceProps: {
-    owner: 'your-github-username',
-    repo: 'your-repo-name',
-    branchOrRef: 'main',
-  },
-
-  // CodeBuild environment
-  buildProps: {
-    runtime: 'nodejs',
-    runtime_version: '20',
-    installcmd: 'npm ci',
-    buildcmd: 'npm run build',
-  },
-
-};
-```
-
-- When using Pipeline mode, `sourceProps`, and `buildProps` are mandatory for CI/CD to function.
-
-- `runtime` and `runtime_version` supports all [CodeBuild runtime versions](https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html)
-
-
-## Optional: Buildspec support
-
-If you have a custom CodeBuild [<code>buildspec.yml</code>](https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html) file for your app, provide relative path to the file. 
-
-```yml
-version: 0.2
-
-phases:
-  install:
-    commands:
-      - npm ci
-  build:
-    commands:
-      - npm run build
-
-artifacts:
-  files:
-    - '**/*'
-  base-directory: 'dist/'
-```
-
-```ts
-// stack/index.ts
-const stackProps: SPAProps = {
-  // ... other props
-
-  buildSpecFilePath: 'buildspec.yml',
-
-  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:0123456789000:secret:your-secret-name-XXXXX',
-};
-```
-
-When you have a `buildspec.yml`, the `buildProps` configuration is not required.
-
-## Optional: Build environment variables
-
-When using the Pipeline mode, you can provide build environment variables to AWS CodeBuild. 
-
-1. Environment variables: string key and value pair.
-
-2. Secrets stored in SSM Parameter Store as secure string:
-
-Create a secure parameter in SSM Parameter Store:
-
-```bash
-aws ssm put-parameter --name "/my-app/API_KEY" --type "SecureString" --value "your-secret-api-key"
-```
-
-Pass environment variables to your build, for example, to inject configuration or secrets. 
-
-```ts
-// stack/index.ts
-const stackProps: SPAProps = {
-  // ... other props
-
-  buildProps: {
-    // ... other props
-
-    environment: [
-      { VITE_API_URL: 'https://api.example.com' },
-      { VITE_ANALYTICS_ID: 'UA-XXXXXX' }
-    ],
-
-    secrets: [
-      { key: 'API_URL', resource: '/my-app/API_URL' },
-      { key: 'API_KEY', resource: '/my-app/API_KEY' },
-    ],
-  }
-};
-```
-
-The library automatically adds the necessary permissions to the CodeBuild project's role to read parameters from SSM Parameter Store.
-
-> [!NOTE]
-> Be cautious when using environment variables. Ensure that any keys values included are safe to commit to your repository. For sensitive variables, use secrets.
 
 
 # Advanced: Configure Redirects and Rewrites
@@ -540,6 +380,167 @@ If neither `allowQueryParams` nor `denyQueryParams` are specified, all query par
 > The `allowQueryParams` and `denyQueryParams` properties are mutually exclusive. If both are provided, denyQueryParams will be ignored.
 
 
+# Advanced: Enabling AWS CodePipeline and CodeBuild
+
+If you prefer to use AWS CodePipeline and CodeBuild for automatic deployment instead of Github Actions, you can enable this by providing a GitHub Personal Access Token stored in AWS Secrets Manager.
+
+## 1. Create GitHub Personal Access Token
+
+[Create a Github Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens) for your Github account. This token must be kept secure.
+
+Here's how to create a GitHub Personal Access Token (PAT):
+
+  - Go to your GitHub account settings.
+  - Navigate to Developer settings > Personal access tokens.
+  - Click on Generate new token.
+  - Choose Tokens (classic).
+  - Give the token a descriptive name.
+  - Set the expiration to No expiration (ignore the warning, for now).
+   Select the scopes (permissions):
+      - `repo`: Full control of private repositories.
+      - `admin:repo_hook`: Full control of repository hooks.
+  - Click Generate token.
+
+> [!NOTE]
+> Copy the token immediately and store it securely. You won't be able to see it again. If you lose it, you'll need to generate a new one.
+
+## 2. Store the Token in AWS Secrets Manager
+
+[Create a Secrets Manager secret](https://docs.aws.amazon.com/secretsmanager/latest/userguide/manage_create-basic-secret.html) as `plaintext` with the Personal Access Token you created earlier. Note the `ARN` of the secret. E.g. `arn:aws:secretsmanager:<REGION_NAME>:<ACCOUNT_ID>:secret:<secret-name>`.
+
+Use the AWS CLI to create a new secret in AWS Secrets Manager:
+
+```bash
+aws secretsmanager create-secret --name your-secret-name --secret-string your-token
+```
+
+- Replace your-secret-name with a name for your secret.
+- Replace your-token with your actual GitHub token.
+- The command will return something like this:
+```json
+{
+    "ARN": "arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX",
+    "Name": "your-secret-name",
+    "VersionId": "b1a532d2-4434-42a3-9283-41581be07455"
+}
+```
+
+Take note of the ARN.
+
+> [!IMPORTANT]
+> Storing secrets in AWS Secrets Manager will incur a cost (around $0.40 per month).
+
+
+## 3. Configure stack
+
+```ts
+// stack/index.ts
+const stackProps: SPAProps = {
+  // ... other props
+
+  // The ARN of the secret
+  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:665186350000:secret:your-secret-name-XXXXXX',
+
+  // Your Github repository url contains https://github.com/<owner>/<repo>
+  sourceProps: {
+    owner: 'your-github-username',
+    repo: 'your-repo-name',
+    branchOrRef: 'main',
+  },
+
+  // CodeBuild environment
+  buildProps: {
+    runtime: 'nodejs',
+    runtime_version: '20',
+    installcmd: 'npm ci',
+    buildcmd: 'npm run build',
+  },
+
+};
+```
+
+- When using Pipeline mode, `sourceProps`, and `buildProps` are mandatory for CI/CD to function.
+
+- `runtime` and `runtime_version` supports all [CodeBuild runtime versions](https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html)
+
+
+## Optional: Buildspec support
+
+If you have a custom CodeBuild [<code>buildspec.yml</code>](https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html) file for your app, provide relative path to the file. 
+
+```yml
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - npm ci
+  build:
+    commands:
+      - npm run build
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: 'dist/'
+```
+
+```ts
+// stack/index.ts
+const stackProps: SPAProps = {
+  // ... other props
+
+  buildSpecFilePath: 'buildspec.yml',
+
+  githubAccessTokenArn: 'arn:aws:secretsmanager:us-east-1:0123456789000:secret:your-secret-name-XXXXX',
+};
+```
+
+When you have a `buildspec.yml`, the `buildProps` configuration is not required.
+
+## Optional: Build environment variables
+
+When using the Pipeline mode, you can provide build environment variables to AWS CodeBuild. 
+
+1. Environment variables: string key and value pair.
+
+2. Secrets stored in SSM Parameter Store as secure string:
+
+Create a secure parameter in SSM Parameter Store:
+
+```bash
+aws ssm put-parameter --name "/my-app/API_KEY" --type "SecureString" --value "your-secret-api-key"
+```
+
+Pass environment variables to your build, for example, to inject configuration or secrets. 
+
+```ts
+// stack/index.ts
+const stackProps: SPAProps = {
+  // ... other props
+
+  buildProps: {
+    // ... other props
+
+    environment: [
+      { VITE_API_URL: 'https://api.example.com' },
+      { VITE_ANALYTICS_ID: 'UA-XXXXXX' }
+    ],
+
+    secrets: [
+      { key: 'API_URL', resource: '/my-app/API_URL' },
+      { key: 'API_KEY', resource: '/my-app/API_KEY' },
+    ],
+  }
+};
+```
+
+The library automatically adds the necessary permissions to the CodeBuild project's role to read parameters from SSM Parameter Store.
+
+> [!NOTE]
+> Be cautious when using environment variables. Ensure that any keys values included are safe to commit to your repository. For sensitive variables, use secrets.
+
+
 # Troubleshooting
 
 ### Deployment Fails with Access Denied:
@@ -563,9 +564,9 @@ If neither `allowQueryParams` nor `denyQueryParams` are specified, all query par
 - Confirm that the token is correctly stored in AWS Secrets Manager and the ARN is accurately referenced.
 
 ### Static Assets Not Loading:
-- Confirm that your build output directory (`outputdir`) is correctly specified and that all assets are being uploaded to S3.
+- Confirm that your build output directory (`outputDir`) is correctly specified and that all assets are being uploaded to S3.
+- **Monorepo**: If you're using a monorepo, verify that the `rootDir` and `outputDir` are correctly set in your configuration. The library appends `rootDir` and `outputDir` to construct the correct directory path where your static assets are located.
 - Ensure that your application's base URL or public path is correctly configured to load assets from the right location.
-- **Monorepo**: If you're using a monorepo, verify that the `rootdir` and `outputdir` are correctly set in your configuration. The library appends `rootdir` and `outputdir` to construct the correct directory path where your static assets are located.
 
 ### Lambda@Edge Function Errors:
 - Check the Lambda logs in CloudWatch for any errors related to your redirects, rewrites, or headers.

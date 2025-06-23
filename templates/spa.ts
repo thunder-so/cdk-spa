@@ -1,5 +1,4 @@
-import { App } from "aws-cdk-lib";
-import { SPAStack, type SPAProps } from "@thunderso/cdk-spa";
+import { Cdk, SPAStack, type SPAProps } from "@thunderso/cdk-spa";
 
 const appStackProps: SPAProps = {
   debug: false,
@@ -16,4 +15,8 @@ const appStackProps: SPAProps = {
   outputDir: 'dist/',
 };
 
-new SPAStack(new App(), `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, appStackProps);
+new SPAStack(
+  new Cdk.App(), 
+  `${appStackProps.application}-${appStackProps.service}-${appStackProps.environment}-stack`, 
+  appStackProps
+);

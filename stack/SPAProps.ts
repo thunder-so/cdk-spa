@@ -55,12 +55,12 @@ export interface SPAProps extends StackProps {
      * If you provide a buildSpec file, skip this.
      */
     readonly buildProps?: {
-      runtime?: string;
-      runtime_version?: string|number;
-      installcmd?: string;
-      buildcmd?: string;
-      include?: string[];
-      exclude?: string[];
+      readonly runtime?: string;
+      readonly runtime_version?: string|number;
+      readonly installcmd?: string;
+      readonly buildcmd?: string;
+      readonly include?: string[];
+      readonly exclude?: string[];
       readonly environment?: Array<{ [key: string]: string; }>;
       readonly secrets?: { key: string; resource: string; }[];
     };
