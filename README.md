@@ -7,7 +7,9 @@
     <a href="https://www.npmjs.com/package/@thunderso/cdk-spa"><img alt="License" src="https://img.shields.io/npm/l/@thunderso/cdk-spa.svg" /></a>
 </p>
 
-Deploy any client-side Single Page Application (SPA) on AWS from Github with CI/CD.
+Deploy any client-side Single Page Application (SPA) and static site generator (SSG) on AWS S3 and CloudFront.
+
+Supports CI/CD with Github.
 
 
 ## Features

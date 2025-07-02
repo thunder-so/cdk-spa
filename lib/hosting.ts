@@ -8,68 +8,24 @@ import { AaaaRecord, ARecord, HostedZone, type IHostedZone, RecordTarget } from 
 import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { Runtime, Code } from 'aws-cdk-lib/aws-lambda';
-
-export interface HostingProps {
-    readonly debug?: boolean;
-    readonly resourceIdPrefix: string;
-    readonly domain?: string;
-    readonly globalCertificateArn?: string;
-    readonly hostedZoneId?: string;
-    readonly errorPagePath?: string;
-    readonly redirects?: { source: string; destination: string; }[];
-    readonly rewrites?: { source: string; destination: string; }[];
-    readonly headers?: { path: string; name: string; value: string; }[];
-    readonly allowHeaders?: string[];
-    readonly allowCookies?: string[];
-    readonly allowQueryParams?: string[];
-    readonly denyQueryParams?: string[];
-}
+import type { SPAProps } from '../stack/SPAProps';
 
 export class HostingConstruct extends Construct {
-
-    /**
-     * The S3 bucket where the deployment assets gets stored.
-     */
+    private resourceIdPrefix: string;
     public hostingBucket: IBucket;
-
-    /**
-     * The S3 bucket where the access logs of the CloudFront distribution gets stored.
-     */
-    public accessLogsBucket: IBucket|undefined;
-
-    /**
-     * The CloudFront distribution.
-     */
+    private accessLogsBucket: IBucket|undefined;
     public distribution:  Distribution;
-
-    /**
-     * The CloudFront distribution origin that routes to S3 HTTP server.
-     */
     private s3Origin: IOrigin;
-
-    /**
-     * The OAC constructs created for the S3 origin.
-     */
     public originAccessControl: CfnOriginAccessControl|undefined;
-
-    /**
-     * Lambda@edge Role
-     */
     private lambdaEdgeRole: Role;
-
-    /**
-     * Redirects and Rewrites CloudFront Function
-     */
     private cloudFrontRedirectsRewrites: experimental.EdgeFunction;
-
-    /**
-     * Headers CloudFront Function
-     */
     private cloudFrontHeaders: experimental.EdgeFunction;
 
-
-    constructor(scope: Construct, id: string, props: HostingProps) {
+    constructor(scope: Construct, id: string, props: SPAProps) {
       super(scope, id);
+
+      // Set the resource prefix
+      this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
 
       // create the S3 bucket for hosting
       this.hostingBucket = this.createHostingBucket(props);
@@ -121,14 +77,14 @@ export class HostingConstruct extends Construct {
       new CfnOutput(this, 'DistributionId', {
         value: this.distribution.distributionId,
         description: 'The ID of the CloudFront distribution',
-        exportName: `${props.resourceIdPrefix}-CloudFrontDistributionId`,
+        exportName: `${this.resourceIdPrefix}-CloudFrontDistributionId`,
       });
 
       // Create an output for the distribution's URL
       new CfnOutput(this, 'DistributionUrl', {
         value: `https://${this.distribution.distributionDomainName}`,
         description: 'The URL of the CloudFront distribution',
-        exportName: `${props.resourceIdPrefix}-CloudFrontDistributionUrl`,
+        exportName: `${this.resourceIdPrefix}-CloudFrontDistributionUrl`,
       });
     }
 
@@ -137,12 +93,12 @@ export class HostingConstruct extends Construct {
      *
      * @private
      */
-    private createHostingBucket(props: HostingProps): Bucket {
+    private createHostingBucket(props: SPAProps): Bucket {
 
         // Hosting bucket access log bucket
         const originLogsBucket = props.debug
           ? new Bucket(this, "OriginLogsBucket", {
-            bucketName: `${props.resourceIdPrefix}-origin-logs`,
+            bucketName: `${this.resourceIdPrefix}-origin-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -154,7 +110,7 @@ export class HostingConstruct extends Construct {
 
         // primary hosting bucket
         const bucket = new Bucket(this, "Bucket", {
-          bucketName: `${props.resourceIdPrefix}-hosting`,
+          bucketName: `${this.resourceIdPrefix}-hosting`,
           versioned: true,
           serverAccessLogsBucket: originLogsBucket,
           enforceSSL: true,
@@ -172,14 +128,14 @@ export class HostingConstruct extends Construct {
         // this.s3Origin = new S3Origin(bucket, {
         //   connectionAttempts: 2,
         //   connectionTimeout: Duration.seconds(3),
-        //   originId: `${props.resourceIdPrefix}-s3origin`
+        //   originId: `${this.resourceIdPrefix}-s3origin`
         // });
 
         // Create the Origin Access Control
         this.originAccessControl = new CfnOriginAccessControl(this, 'CloudFrontOac', {
           originAccessControlConfig: {
-            name: `${props.resourceIdPrefix}-OAC`,
-            description: `Origin Access Control for ${props.resourceIdPrefix}`,
+            name: `${this.resourceIdPrefix}-OAC`,
+            description: `Origin Access Control for ${this.resourceIdPrefix}`,
             originAccessControlOriginType: 's3',
             signingBehavior: 'always',
             signingProtocol: 'sigv4',
@@ -187,7 +143,7 @@ export class HostingConstruct extends Construct {
         });
 
         this.s3Origin = S3BucketOrigin.withOriginAccessControl(bucket, {
-          originId: `${props.resourceIdPrefix}-s3origin`,
+          originId: `${this.resourceIdPrefix}-s3origin`,
           originAccessLevels: [ AccessLevel.READ ],
           originAccessControlId: this.originAccessControl?.attrId,
         });
@@ -245,7 +201,7 @@ export class HostingConstruct extends Construct {
 
     /**
      * Create a Lambda@Edge Function for Redirects and Rewrites
-     * @param props HostingProps
+     * @param props SPAProps
      * 
      */
     // Helper function to escape special regex characters
@@ -253,7 +209,7 @@ export class HostingConstruct extends Construct {
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     };
 
-    private createCloudFrontRedirectsRewrites(props: HostingProps): experimental.EdgeFunction {
+    private createCloudFrontRedirectsRewrites(props: SPAProps): experimental.EdgeFunction {
       const redirects = props.redirects || [];
       const rewrites = props.rewrites || [];
 
@@ -356,10 +312,10 @@ export class HostingConstruct extends Construct {
 
     /**
      * Create a Lambda@Edge Function for Custom Headers
-     * @param props HostingProps
+     * @param props SPAProps
      * 
      */
-    private createCloudFrontHeaders(props: HostingProps): experimental.EdgeFunction {
+    private createCloudFrontHeaders(props: SPAProps): experimental.EdgeFunction {
       const headers = props.headers || [];
     
       // Generate the Lambda function code with the headers embedded
@@ -417,12 +373,12 @@ export class HostingConstruct extends Construct {
      * @param props 
      * @private
      */
-    private createCloudFrontDistribution(props: HostingProps): Distribution {
+    private createCloudFrontDistribution(props: SPAProps): Distribution {
 
         // access logs bucket
         this.accessLogsBucket = props.debug
           ? new Bucket(this, "AccessLogsBucket", {
-            bucketName: `${props.resourceIdPrefix}-access-logs`,
+            bucketName: `${this.resourceIdPrefix}-access-logs`,
             encryption: BucketEncryption.S3_MANAGED,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -437,7 +393,7 @@ export class HostingConstruct extends Construct {
          * This policy is used to set default security headers for the CloudFront distribution.
          */
         const responseHeadersPolicy = new ResponseHeadersPolicy(this, "ResponseHeadersPolicy", {
-          responseHeadersPolicyName: `${props.resourceIdPrefix}-ResponseHeadersPolicy`,
+          responseHeadersPolicyName: `${this.resourceIdPrefix}-ResponseHeadersPolicy`,
           comment: "ResponseHeadersPolicy" + Aws.STACK_NAME + "-" + Aws.REGION,
           securityHeadersBehavior: {              
             contentSecurityPolicy: {
@@ -488,7 +444,7 @@ export class HostingConstruct extends Construct {
          * This policy is used for the default behavior of the CloudFront distribution.
          */
         const defaultCachePolicy = new CachePolicy(this, "DefaultCachePolicy", {
-          cachePolicyName: `${props.resourceIdPrefix}-DefaultCachePolicy`,
+          cachePolicyName: `${this.resourceIdPrefix}-DefaultCachePolicy`,
           comment: 'Cache policy for HTML documents with short TTL',
           defaultTtl: Duration.minutes(1),
           minTtl: Duration.seconds(0),
@@ -591,7 +547,7 @@ export class HostingConstruct extends Construct {
           ...(props.domain && props.globalCertificateArn
             ? {
                 domainNames: [props.domain],
-                certificate: Certificate.fromCertificateArn(this, `${props.resourceIdPrefix}-global-certificate`, props.globalCertificateArn),
+                certificate: Certificate.fromCertificateArn(this, `${this.resourceIdPrefix}-global-certificate`, props.globalCertificateArn),
               }
             : {}),
         }
@@ -606,11 +562,11 @@ export class HostingConstruct extends Construct {
      * @param props
      * @private
      */
-    private findHostedZone(props: HostingProps): IHostedZone | void {
+    private findHostedZone(props: SPAProps): IHostedZone | void {
         const domainParts = props.domain?.split('.');
         if (!domainParts) return;
 
-        return HostedZone.fromHostedZoneAttributes(this, `${props.resourceIdPrefix}-hosted-zone`, {
+        return HostedZone.fromHostedZoneAttributes(this, `${this.resourceIdPrefix}-hosted-zone`, {
             hostedZoneId: props.hostedZoneId as string,
             zoneName: domainParts[domainParts.length - 1] // Support subdomains
         });
@@ -622,19 +578,19 @@ export class HostingConstruct extends Construct {
      * @param props
      * @private
      */
-    private createDnsRecords(props: HostingProps): void {
+    private createDnsRecords(props: SPAProps): void {
         const hostedZone = this.findHostedZone(props);
         const dnsTarget = RecordTarget.fromAlias(new CloudFrontTarget(this.distribution));
 
         // Create a record for IPv4
-        new ARecord(this, `${props.resourceIdPrefix}-ipv4-record`, {
+        new ARecord(this, `${this.resourceIdPrefix}-ipv4-record`, {
             recordName: props.domain,
             zone: hostedZone as IHostedZone,
             target: dnsTarget,
         });
 
         // Create a record for IPv6
-        new AaaaRecord(this, `${props.resourceIdPrefix}-ipv6-record`, {
+        new AaaaRecord(this, `${this.resourceIdPrefix}-ipv6-record`, {
             recordName: props.domain,
             zone: hostedZone as IHostedZone,
             target: dnsTarget,

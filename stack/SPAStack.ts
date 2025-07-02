@@ -10,62 +10,28 @@ export class SPAStack extends Stack {
     super(scope, id, props);
 
     // Check mandatory properties
-    if (!props?.env) {
+    if (!props?.env.account || !props?.env.region) {
       throw new Error('Must provide AWS account and region.');
     }
     if (!props.application || !props.environment || !props.service) {
       throw new Error('Mandatory stack properties missing.');
     }
 
-    // Set the resource prefix
-    const resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
-
-    // Sanitize paths to remove leading and trailing slashes
-    const sanitizePath = (path: string | undefined): string => {
-      if (!path) return '';
-      return path.replace(/^\/+|\/+$/g, '');
-    };
-
-    const rootDir = sanitizePath(props.rootDir);
-    const outputDir = sanitizePath(props.outputDir);
-
     /**
      * Hosting the SPA with S3 and CloudFront
      * 
      */
-    const hosting = new HostingConstruct(this, 'Hosting', {
-      debug: props.debug,
-      resourceIdPrefix: resourceIdPrefix,
-      domain: props.domain as string,
-      globalCertificateArn: props.globalCertificateArn as string,
-      hostedZoneId: props.hostedZoneId as string,
-      errorPagePath: props.errorPagePath,
-      redirects: props.redirects,
-      rewrites: props.rewrites,
-      headers: props.headers,
-      allowHeaders: props.allowHeaders,
-      allowCookies: props.allowCookies,
-      allowQueryParams: props.allowQueryParams,
-      denyQueryParams: props.denyQueryParams,
-    });
+    const hosting = new HostingConstruct(this, 'Hosting', props);
 
     /**
      * Pipeline disabled, deploy assets directly to S3
      * 
      */
-    if (!props.githubAccessTokenArn) {
+    if (!props?.accessTokenSecretArn) {
       new DeployConstruct(this, 'Deploy', {
-        debug: props.debug,
-        resourceIdPrefix: resourceIdPrefix,
+        ...props,
         HostingBucket: hosting.hostingBucket,
         Distribution: hosting.distribution,
-        rootDir: rootDir,
-        outputDir: outputDir,
-        // buildProps: {
-        //   include: props.buildProps?.include as string[],
-        //   exclude: props.buildProps?.exclude as string[]
-        // },
-        buildProps: props.buildProps,
       });
     }
 
@@ -76,48 +42,25 @@ export class SPAStack extends Stack {
     else {
       // check for sourceProps
       if (!props.sourceProps?.owner || !props.sourceProps?.repo || !props.sourceProps?.branchOrRef) {
-        throw new Error('sourceProps owner, repo and branch/ref required.');
+        throw new Error('Missing sourceProps: Github owner, repo and branch/ref required.');
       }
 
       // check for buildProps
       if (!props.buildProps?.runtime || !props.buildProps?.runtime_version || !props.buildProps?.installcmd || !props.buildProps?.buildcmd) {
-        throw new Error('buildProps runtime, runtime_version, installcmd, buildcmd and outputdir required when pipeline is enabled.');
+        throw new Error('Missing buildProps: runtime, runtime_version, installcmd, buildcmd and outputdir required when pipeline is enabled.');
       }
 
       const pipeline = new PipelineConstruct(this, 'Pipeline', {
-        debug: props.debug,
-        resourceIdPrefix: resourceIdPrefix,
+        ...props,
         HostingBucket: hosting.hostingBucket,
         Distribution: hosting.distribution,
-        rootDir: rootDir,
-        outputDir: outputDir,
-        sourceProps: {
-          owner: props.sourceProps?.owner, 
-          repo: props.sourceProps?.repo, 
-          branchOrRef: props.sourceProps?.branchOrRef,
-        },
-        githubAccessTokenArn: props.githubAccessTokenArn,
-        buildSpecFilePath: props.buildSpecFilePath as string,
-        buildProps: {
-          runtime: props.buildProps?.runtime,
-          runtime_version: props.buildProps?.runtime_version,
-          installcmd: props.buildProps?.installcmd,
-          buildcmd: props.buildProps?.buildcmd,
-          include: props.buildProps?.include as string[],
-          exclude: props.buildProps?.exclude as string[],
-          environment: props.buildProps?.environment as { [key: string]: string }[],
-          secrets: props.buildProps?.secrets as { key: string; resource: string }[]
-        },
-        // buildEnvironmentVariables: props.buildEnvironmentVariables as { key: string; resource: string }[]
       });
     
       // Pipeline events
       if (props.eventTarget) {
         new EventsConstruct(this, 'PipelineEvents', {
-          debug: props.debug,
-          resourceIdPrefix: resourceIdPrefix,
+          ...props,
           codePipeline: pipeline.codePipeline,
-          eventTarget: props.eventTarget,
         });
       }
     }; // end if

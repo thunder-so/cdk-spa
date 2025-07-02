@@ -4,87 +4,36 @@ import { Construct } from "constructs";
 import { Duration, RemovalPolicy, CfnOutput, SecretValue } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
-import { Project, PipelineProject, LinuxBuildImage, ComputeType, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
+import { Project, PipelineProject, LinuxArmBuildImage, LinuxBuildImage, ComputeType, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
 import { Artifact, Pipeline, PipelineType } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
+import type { SPAProps } from '../stack/SPAProps';
 
-export interface PipelineProps {
-  debug?: boolean;
-  resourceIdPrefix: string;
-
-  // Objects from HostingConstruct
+// Objects from HostingConstruct
+export interface PipelineProps extends SPAProps {
   HostingBucket: IBucket;
   Distribution: IDistribution;
-
-  // Directories
-  rootDir: string;
-  outputDir: string;
-
-  // GitHub Access Token
-  githubAccessTokenArn: string;
-
-  // Source
-  sourceProps: {
-    owner: string;
-    repo: string;
-    branchOrRef: string;
-  };
-
-  // Build
-  buildSpecFilePath?: string;
-  buildProps?: {
-    runtime: string;
-    runtime_version: string|number;
-    installcmd: string;
-    buildcmd: string;
-    include: string[];
-    exclude: string[];
-    environment?: { [key: string]: string; }[];
-    secrets?: { key: string; resource: string; }[];
-  };
-  // buildEnvironmentVariables: { key: string; resource: string; }[],
 }
 
 export class PipelineConstruct extends Construct {
-
-  /**
-   * The buildstep
-   */
-  public codeBuildProject: Project;
-
-  /**
-   * The CodePipeline pipeline
-   */
+  private resourceIdPrefix: string;
+  private codeBuildProject: Project;
   public codePipeline: Pipeline;
-
-  /**
-   * Deployment action as a CodeBuild Project
-   */
   private syncAction: Project;
-
-  /**
-   * The Pipeline SourceAction commit hash
-   */
   private commitId: string;
-
-  /**
-   * The Pipeline BuildAction id
-   */
   private buildId: string;
-
-  /**
-   * The build output bucket
-   */
   public buildOutputBucket: IBucket;
-
 
   constructor(scope: Construct, id: string, props: PipelineProps) {
     super(scope, id);
 
+    // Set the resource prefix
+    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+
     // output bucket
     this.buildOutputBucket = new Bucket(this, "BuildOutputBucket", {
-      bucketName: `${props.resourceIdPrefix}-output`,
+      bucketName: `${this.resourceIdPrefix}-output`,
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -108,7 +57,7 @@ export class PipelineConstruct extends Construct {
     new CfnOutput(this, 'PipelineName', {
       value: this.codePipeline.pipelineName,
       description: 'The name of the CodePipeline pipeline',
-      exportName: `${props.resourceIdPrefix}-CodePipelineName`,
+      exportName: `${this.resourceIdPrefix}-CodePipelineName`,
     });
 
   }
@@ -153,10 +102,10 @@ export class PipelineConstruct extends Construct {
     });
     
     const project = new PipelineProject(this, 'SyncActionProject', {
-      projectName: `${props.resourceIdPrefix}-syncActionProject`,
+      projectName: `${this.resourceIdPrefix}-syncActionProject`,
       buildSpec: buildSpec,
       environment: {
-        buildImage: LinuxBuildImage.STANDARD_7_0,
+        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
         computeType: ComputeType.SMALL,
       },
       role: syncActionRole,
@@ -232,7 +181,7 @@ export class PipelineConstruct extends Construct {
 
     // build logs bucket
     buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
-      bucketName: `${props.resourceIdPrefix}-build-logs`,
+      bucketName: `${this.resourceIdPrefix}-build-logs`,
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       objectOwnership: ObjectOwnership.OBJECT_WRITER,
@@ -314,11 +263,11 @@ export class PipelineConstruct extends Construct {
     
     // create the cloudbuild project
     const project = new PipelineProject(this, "CodeBuildProject", {
-      projectName: `${props.resourceIdPrefix}-buildproject`,
+      projectName: `${this.resourceIdPrefix}-buildproject`,
       buildSpec: buildSpecYaml,
       timeout: Duration.minutes(10),
       environment: {
-        buildImage: LinuxBuildImage.STANDARD_7_0,
+        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
         computeType: ComputeType.MEDIUM,
         privileged: true,
       },
@@ -335,7 +284,7 @@ export class PipelineConstruct extends Construct {
       new PolicyStatement({
         effect: Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
-        resources: [props.githubAccessTokenArn]
+        resources: [props?.accessTokenSecretArn!]
       })
     );
 
@@ -378,7 +327,7 @@ export class PipelineConstruct extends Construct {
 
     // build artifact bucket
     const artifactBucket = new Bucket(this, "ArtifactBucket", {
-      bucketName: `${props.resourceIdPrefix}-artifacts`,
+      bucketName: `${this.resourceIdPrefix}-artifacts`,
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
@@ -389,7 +338,7 @@ export class PipelineConstruct extends Construct {
     // setup the pipeline
     const pipeline = new Pipeline(this, "Pipeline", {
       artifactBucket: artifactBucket,
-      pipelineName: `${props.resourceIdPrefix}-pipeline`,
+      pipelineName: `${this.resourceIdPrefix}-pipeline`,
       crossAccountKeys: false,
       pipelineType: PipelineType.V2
     });
@@ -399,7 +348,7 @@ export class PipelineConstruct extends Construct {
       new PolicyStatement({
         effect: Effect.ALLOW,
         actions: ["secretsmanager:GetSecretValue"],
-        resources: [props.githubAccessTokenArn]
+        resources: [props.accessTokenSecretArn!]
       })
     );
 
@@ -441,10 +390,10 @@ export class PipelineConstruct extends Construct {
 
     const sourceAction = new GitHubSourceAction({
       actionName: 'GithubSourceAction',
-      owner: props.sourceProps.owner,
-      repo: props.sourceProps.repo,
-      branch: props.sourceProps.branchOrRef,
-      oauthToken: SecretValue.secretsManager(props.githubAccessTokenArn),
+      owner: props.sourceProps?.owner!,
+      repo: props.sourceProps?.repo!,
+      branch: props.sourceProps?.branchOrRef,
+      oauthToken: SecretValue.secretsManager(props.accessTokenSecretArn!),
       output: sourceOutput,
       trigger: GitHubTrigger.WEBHOOK
     });

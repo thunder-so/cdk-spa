@@ -5,21 +5,24 @@ import { Role, ServicePrincipal, PolicyDocument, PolicyStatement, Effect } from 
 import { RemovalPolicy } from 'aws-cdk-lib';
 import { Pipeline } from 'aws-cdk-lib/aws-codepipeline';
 import { CloudWatchLogGroup, EventBus as EventBusTarget } from 'aws-cdk-lib/aws-events-targets';
+import { SPAProps } from '../stack/SPAProps';
 
-export interface EventsProps {
-  debug?: boolean;
-  resourceIdPrefix: string;
+export interface EventsProps extends SPAProps {
   codePipeline: Pipeline;
-  eventTarget: string;
 }
 
 export class EventsConstruct extends Construct {
+  private resourceIdPrefix: string;
+
   constructor(scope: Construct, id: string, props: EventsProps) {
     super(scope, id);
 
+    // Set the resource prefix
+    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+
     // Create a rule to capture execution events
     const rule = new Rule(this, 'EventsRule', {
-      ruleName: `${props.resourceIdPrefix}-events`,
+      ruleName: `${this.resourceIdPrefix}-events`,
       eventPattern: {
         source: ['aws.codepipeline'],
         detailType: ['CodePipeline Pipeline Execution State Change'],
@@ -33,7 +36,7 @@ export class EventsConstruct extends Construct {
     if (props.debug) {
       // Create a CloudWatch Log Group for debugging
       const logGroup = new LogGroup(this, 'EventsLogGroup', {
-        logGroupName: `/aws/events/${props.resourceIdPrefix}-pipeline`,
+        logGroupName: `/aws/events/${this.resourceIdPrefix}-pipeline`,
         removalPolicy: RemovalPolicy.DESTROY,
         retention: RetentionDays.ONE_YEAR
       });
@@ -41,7 +44,7 @@ export class EventsConstruct extends Construct {
       // Create IAM role for log group
       const logGroupEventRole = new Role(this, 'LogGroupEventRole', {
         assumedBy: new ServicePrincipal('events.amazonaws.com'),
-        roleName: `${props.resourceIdPrefix}-LogGroupEventRole`,
+        roleName: `${this.resourceIdPrefix}-LogGroupEventRole`,
         description: 'Role for EventBridge to write pipeline events to CloudWatch Logs'
       });
 
@@ -55,7 +58,7 @@ export class EventsConstruct extends Construct {
     // Create IAM role for cross-account event bus access
     const crossAccountEventRole = new Role(this, 'CrossAccountEventRole', {
       assumedBy: new ServicePrincipal('events.amazonaws.com'),
-      roleName: `${props.resourceIdPrefix}-CrossAccountEventRole`,
+      roleName: `${this.resourceIdPrefix}-CrossAccountEventRole`,
       description: 'Role for EventBridge to write pipeline events to external Event Bus',
       inlinePolicies: {
         AllowPutEvents: new PolicyDocument({
@@ -63,7 +66,7 @@ export class EventsConstruct extends Construct {
             new PolicyStatement({
               effect: Effect.ALLOW,
               actions: ['events:PutEvents'],
-              resources: [props.eventTarget],
+              resources: [props.eventTarget!],
             }),
           ],
         }),
@@ -71,7 +74,7 @@ export class EventsConstruct extends Construct {
     });
 
     // add external event bus as target
-    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventTarget);
+    const target = EventBus.fromEventBusArn(this, 'CrossAccountEventTarget', props.eventTarget!);
 
     rule.addTarget(new EventBusTarget(target, {
       role: crossAccountEventRole
