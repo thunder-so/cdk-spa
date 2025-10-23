@@ -28,6 +28,11 @@ export interface PipelineProps {
     readonly exclude?: string[];
     readonly environment?: Array<{ [key: string]: string; }>;
     readonly secrets?: { key: string; resource: string; }[];
+    /**
+     * Optional. Path to a custom Dockerfile for the build environment.
+     * Example: 'runtime/Dockerfile'
+     */
+    readonly customRuntime?: string;
   };
 
   /**

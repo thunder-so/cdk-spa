@@ -542,6 +542,78 @@ The library automatically adds the necessary permissions to the CodeBuild projec
 > [!NOTE]
 > Be cautious when using environment variables. Ensure that any keys values included are safe to commit to your repository. For sensitive variables, use secrets.
 
+# Advanced: Custom Runtime for CodeBuild
+
+For advanced build requirements, you can provide a custom Docker runtime environment for your CodeBuild project. This allows you to use specific tools, versions, or configurations not available in the standard CodeBuild images.
+
+## Configuration
+
+To use a custom runtime, specify the path to your Dockerfile in the `buildProps`:
+
+```ts
+// stack/index.ts
+const stackProps: SPAProps = {
+  // ... other props
+
+  buildProps: {
+    customRuntime: 'runtime/Dockerfile', // Path to your custom Dockerfile
+    runtime_version: '22', // Node.js version to use with fnm
+    installcmd: 'pnpm install',
+    buildcmd: 'pnpm build',
+  },
+};
+```
+
+## Example Dockerfile
+
+Create a `runtime/Dockerfile` in your project root:
+
+```dockerfile
+FROM node:24-alpine
+
+RUN apk add --no-cache bash curl
+RUN apk add fnm --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing/
+
+# Setup fnm environment and install Node.js versions
+RUN echo 'eval "$(fnm env --shell=bash --use-on-cd)"' >> /etc/profile && \
+    bash -c "source /etc/profile && fnm install 20 && fnm install 22 && fnm install 24 && fnm default 24"
+
+# Install pnpm
+ENV ENV=/etc/profile
+RUN touch /etc/profile && curl -fsSL https://get.pnpm.io/install.sh | bash
+
+# Install Yarn (via corepack, included with Node)
+RUN corepack enable && \
+    corepack prepare yarn@stable --activate
+
+# Install Bun
+RUN curl -fsSL https://bun.sh/install | bash
+
+# Update PATH for pnpm and bun
+ENV PATH="/root/.local/share/pnpm:/root/.bun/bin:$PATH"
+
+CMD ["/bin/sh"]
+```
+
+## Build Process Changes
+
+When using a custom runtime:
+
+- The Docker image is built and pushed to Amazon ECR automatically
+- CodeBuild uses your custom image instead of the standard AWS images
+- The install phase sources `/etc/profile` and uses `fnm` to switch Node.js versions
+- All package managers (npm, pnpm, yarn, bun) are available
+
+## Use Cases
+
+- **Multiple Node.js versions**: Switch between Node.js versions during build
+- **Alternative package managers**: Use pnpm, yarn, or bun instead of npm
+- **Custom build tools**: Install specific versions of build tools or dependencies
+- **System dependencies**: Add system packages required by your build process
+
+> [!NOTE]
+> Custom runtimes require additional ECR permissions and will increase build times due to image pulling. The Docker image is cached after the first build.
+
 
 # Troubleshooting
 

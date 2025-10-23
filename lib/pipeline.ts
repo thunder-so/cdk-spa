@@ -1,13 +1,16 @@
 import fs from 'fs';
+import path from 'path';
 import yaml from "yaml";
 import { Construct } from "constructs";
 import { Duration, RemovalPolicy, CfnOutput, SecretValue } from 'aws-cdk-lib';
 import { PolicyStatement, Effect, ArnPrincipal, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
 import { Bucket, type IBucket, BlockPublicAccess, ObjectOwnership, BucketEncryption } from "aws-cdk-lib/aws-s3";
 import { Project, PipelineProject, LinuxArmBuildImage, LinuxBuildImage, ComputeType, BuildSpec, BuildEnvironmentVariable, BuildEnvironmentVariableType } from "aws-cdk-lib/aws-codebuild";
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Artifact, Pipeline, PipelineType } from 'aws-cdk-lib/aws-codepipeline';
 import { GitHubSourceAction, GitHubTrigger, CodeBuildAction, S3DeployAction } from 'aws-cdk-lib/aws-codepipeline-actions';
 import { IDistribution } from 'aws-cdk-lib/aws-cloudfront';
+import { DockerImageAsset } from 'aws-cdk-lib/aws-ecr-assets';
 import type { SPAProps } from '../stack/SPAProps';
 
 // Objects from HostingConstruct
@@ -24,6 +27,7 @@ export class PipelineConstruct extends Construct {
   private commitId: string;
   private buildId: string;
   public buildOutputBucket: IBucket;
+  private customRuntimeImageUri?: string;
 
   constructor(scope: Construct, id: string, props: PipelineProps) {
     super(scope, id);
@@ -42,16 +46,20 @@ export class PipelineConstruct extends Construct {
       autoDeleteObjects: true,
     });
 
+    // create custom runtime if enabled
+    if (props.buildProps?.customRuntime) {
+      const dockerAsset = new DockerImageAsset(this, 'RuntimeImage', {
+        directory: path.dirname(props.buildProps.customRuntime),
+        file: path.basename(props.buildProps.customRuntime),
+      });
+      this.customRuntimeImageUri = dockerAsset.imageUri;
+    }
+
     // create build project
     this.codeBuildProject = this.createBuildProject(props);
   
     // create pipeline
     this.codePipeline = this.createPipeline(props);
-
-    // Check if event target is provided and create pipeline events log and ping
-    // if (props.eventTarget) {
-    //   this.createPipelineEvents(props);
-    // }
 
     // Create an output for the pipeline's name
     new CfnOutput(this, 'PipelineName', {
@@ -177,19 +185,20 @@ export class PipelineConstruct extends Construct {
    */
   private createBuildProject(props: PipelineProps): Project {
 
-    let buildLogsBucket: Bucket | undefined;
-
     // build logs bucket
-    buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
-      bucketName: `${this.resourceIdPrefix}-build-logs`,
-      encryption: BucketEncryption.S3_MANAGED,
-      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
-      objectOwnership: ObjectOwnership.OBJECT_WRITER,
-      enforceSSL: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-    });
-
+    let buildLogsBucket: Bucket | undefined;
+    if (props.debug) {
+      buildLogsBucket = new Bucket(this, "BuildLogsBucket", {
+        bucketName: `${this.resourceIdPrefix}-build-logs`,
+        encryption: BucketEncryption.S3_MANAGED,
+        blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+        objectOwnership: ObjectOwnership.OBJECT_WRITER,
+        enforceSSL: true,
+        removalPolicy: RemovalPolicy.DESTROY,
+        autoDeleteObjects: true,
+      });
+    }
+    
     // Read the buildspec.yml file
     let buildSpecYaml;
     if (props.buildSpecFilePath) {
@@ -208,9 +217,19 @@ export class PipelineConstruct extends Construct {
           'exported-variables': ['CODEBUILD_BUILD_ID']
         },
         phases: {
-            install: {
+            install: props.buildProps?.customRuntime ? {
+                commands: [
+                  'echo "Starting build with custom runtime"',
+                  'source /etc/profile',
+                  `fnm use ${props.buildProps?.runtime_version || '24'}`,
+                  ...(props.rootDir ? [`cd ${props.rootDir}`] : []),
+                  'echo "Installing dependencies..."',
+                  props.buildProps?.installcmd || 'npm install',
+                  'echo "Install phase complete"'
+                ]
+            } : {
                 'runtime-versions': {
-                  [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '20'
+                  [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '24'
                 },
                 commands: [ 
                   ...(props.rootDir ? [`cd ${props.rootDir}`] : []),
@@ -218,7 +237,11 @@ export class PipelineConstruct extends Construct {
                 ]
             },
             build: {
-                commands: [ props.buildProps?.buildcmd || 'npm run build'],
+                commands: [
+                  'echo "Starting build phase"',
+                  props.buildProps?.buildcmd || 'npm run build',
+                  'echo "Build phase complete"'
+                ],
             },
         },
         artifacts: {
@@ -261,21 +284,31 @@ export class PipelineConstruct extends Construct {
         : {}),
     };
     
+    // create the CloudWatch LogGroup for builds
+    const codebuildLogGroup = new LogGroup(this, 'CodeBuildLogGroup', {
+      logGroupName: `/aws/codebuild/${this.resourceIdPrefix}-buildproject`,
+      removalPolicy: RemovalPolicy.DESTROY,
+      retention: RetentionDays.ONE_WEEK,
+    });
+
     // create the cloudbuild project
     const project = new PipelineProject(this, "CodeBuildProject", {
       projectName: `${this.resourceIdPrefix}-buildproject`,
       buildSpec: buildSpecYaml,
       timeout: Duration.minutes(10),
       environment: {
-        buildImage: LinuxArmBuildImage.AMAZON_LINUX_2_STANDARD_3_0,
+        buildImage: this.customRuntimeImageUri
+          ? LinuxBuildImage.fromDockerRegistry(this.customRuntimeImageUri)
+          : LinuxArmBuildImage.AMAZON_LINUX_2023_STANDARD_3_0,
         computeType: ComputeType.MEDIUM,
         privileged: true,
       },
       environmentVariables: buildEnvironmentVariables,
       logging: {
-        s3: {
-          bucket: buildLogsBucket,
-        }
+        s3: buildLogsBucket ? { bucket: buildLogsBucket } : undefined,
+        cloudWatch: codebuildLogGroup
+          ? { logGroup: codebuildLogGroup }
+          : undefined,
       },
     });
 
@@ -296,6 +329,39 @@ export class PipelineConstruct extends Construct {
         resources: ["arn:aws:ssm:*:*:parameter/*"]
       })
     );
+
+    // add CloudWatch logs permissions
+    project.addToRolePolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        resources: [
+          // allow management of the log group and log streams
+          `arn:aws:logs:${props.env.region}:${props.env.account}:log-group:/aws/codebuild/${this.resourceIdPrefix}-*`,
+          `arn:aws:logs:${props.env.region}:${props.env.account}:log-group:/aws/codebuild/${this.resourceIdPrefix}-*:log-stream:*`
+        ]
+      })
+    );
+
+    // allow project to pull custom runtime image from ECR if using custom runtime
+    if (this.customRuntimeImageUri) {
+      project.addToRolePolicy(
+        new PolicyStatement({
+          effect: Effect.ALLOW,
+          actions: [
+            "ecr:GetAuthorizationToken",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchGetImage"
+          ],
+          resources: ["*"]
+        })
+      );
+    }
 
     // Grant project permission to write files in output bucket
     this.buildOutputBucket.addToResourcePolicy(
