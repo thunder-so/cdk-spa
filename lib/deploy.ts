@@ -16,7 +16,7 @@ export class DeployConstruct extends Construct {
     super(scope, id);
 
     // Construct the full path to the build output directory
-    const assetPath = path.join(props.rootDir || '.', props.outputDir || '');
+    const assetPath = path.join(props.contextDirectory || '', props.rootDir || '.', props.outputDir || '');
       
     // Create the S3 deployment
     new BucketDeployment(this, 'DeployAssets', {
