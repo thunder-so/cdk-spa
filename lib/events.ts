@@ -18,7 +18,7 @@ export class EventsConstruct extends Construct {
     super(scope, id);
 
     // Set the resource prefix
-    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+    this.resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
 
     // Create a rule to capture execution events
     const rule = new Rule(this, 'EventsRule', {

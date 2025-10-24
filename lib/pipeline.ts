@@ -28,12 +28,23 @@ export class PipelineConstruct extends Construct {
   private buildId: string;
   public buildOutputBucket: IBucket;
   private customRuntimeImageUri?: string;
+  private rootDir: string;
+  private outputDir: string;
 
   constructor(scope: Construct, id: string, props: PipelineProps) {
     super(scope, id);
 
     // Set the resource prefix
-    this.resourceIdPrefix = `${props.application}-${props.service}-${props.environment}`.substring(0, 42);
+    this.resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
+
+    // Sanitize paths to remove slashes and special characters
+    const sanitizePath = (path: string | undefined): string => {
+      if (!path) return '';
+      return path.replace(/[\/\\|.\-_]/g, '').replace(/^\/+|\/+$/g, '');
+    };
+
+    this.rootDir = sanitizePath(props?.rootDir);
+    this.outputDir = sanitizePath(props?.outputDir);
 
     // output bucket
     this.buildOutputBucket = new Bucket(this, "BuildOutputBucket", {
@@ -222,7 +233,7 @@ export class PipelineConstruct extends Construct {
                   'echo "Starting build with custom runtime"',
                   'source /etc/profile',
                   `fnm use ${props.buildProps?.runtime_version || '24'}`,
-                  ...(props.rootDir ? [`cd ${props.rootDir}`] : []),
+                  ...(this.rootDir ? [`cd ${this.rootDir}`] : []),
                   'echo "Installing dependencies..."',
                   props.buildProps?.installcmd || 'npm install',
                   'echo "Install phase complete"'
@@ -232,7 +243,7 @@ export class PipelineConstruct extends Construct {
                   [props.buildProps?.runtime || 'nodejs']: props.buildProps?.runtime_version || '24'
                 },
                 commands: [ 
-                  ...(props.rootDir ? [`cd ${props.rootDir}`] : []),
+                  ...(this.rootDir ? [`cd ${this.rootDir}`] : []),
                   props.buildProps?.installcmd || 'npm install'
                 ]
             },
@@ -255,7 +266,7 @@ export class PipelineConstruct extends Construct {
                 ? props.buildProps.exclude.map((pattern) => `!${pattern}`)
                 : []),
             ],
-            'base-directory': `${props.rootDir || '.'}/${props.outputDir || ''}`,
+            'base-directory': path.join(this.rootDir || '', this.outputDir || ''),
         }
       })
     }
