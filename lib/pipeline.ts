@@ -37,10 +37,10 @@ export class PipelineConstruct extends Construct {
     // Set the resource prefix
     this.resourceIdPrefix = `${props.application.substring(0, 7)}-${props.service.substring(0, 7)}-${props.environment.substring(0, 7)}`.substring(0, 23).toLowerCase();
 
-    // Sanitize paths to remove slashes and special characters
+    // Sanitize paths to ensure valid unix directory paths
     const sanitizePath = (path: string | undefined): string => {
       if (!path) return '';
-      return path.replace(/[\/\\|.\-_]/g, '').replace(/^\/+|\/+$/g, '');
+      return path.replace(/[^a-zA-Z0-9._\-@#$%^&*+=~ /]|\/+/g, m => m.includes('/') ? '/' : '').replace(/^\/+|\/+$/g, '')
     };
 
     this.rootDir = sanitizePath(props?.rootDir);
