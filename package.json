@@ -1,6 +1,6 @@
 {
   "name": "@thunderso/cdk-spa",
-  "version": "0.23.3",
+  "version": "0.23.4",
   "description": "CDK Library for provisioning infrastructure for Single Page Applications.",
   "tags": [
     "aws",
