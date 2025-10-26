@@ -113,7 +113,7 @@ export class PipelineConstruct extends Construct {
             // 'echo "Build ID: $BUILD_ID"',
             // 'echo "Output Bucket: $OUTPUT_BUCKET"',
             // 'echo "Hosting Bucket: $HOSTING_BUCKET"',
-            'aws s3 cp s3://$OUTPUT_BUCKET/$COMMIT_ID/ s3://$HOSTING_BUCKET/ --recursive --metadata revision=$COMMIT_ID',
+            'aws s3 cp s3://$OUTPUT_BUCKET/$BUILD_ID/ s3://$HOSTING_BUCKET/ --recursive --metadata revision=$COMMIT_ID',
             'aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_DISTRIBUTION_ID --paths "/**"'
           ],
         },
@@ -505,7 +505,7 @@ export class PipelineConstruct extends Construct {
       actionName: 'DeployAction',
       input: buildOutput,
       bucket: this.buildOutputBucket,
-      objectKey: this.commitId, // store in commit hash directories
+      objectKey: this.buildId, // store in commit hash directories
       runOrder: 3,
     });
 

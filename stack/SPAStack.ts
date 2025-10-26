@@ -24,22 +24,20 @@ export class SPAStack extends Stack {
     const hosting = new HostingConstruct(this, 'Hosting', props);
 
     /**
-     * Pipeline disabled, deploy assets directly to S3
+     * Deploy assets directly to S3
      * 
      */
-    if (!props?.accessTokenSecretArn) {
-      new DeployConstruct(this, 'Deploy', {
-        ...props,
-        HostingBucket: hosting.hostingBucket,
-        Distribution: hosting.distribution,
-      });
-    }
+    new DeployConstruct(this, 'Deploy', {
+      ...props,
+      HostingBucket: hosting.hostingBucket,
+      Distribution: hosting.distribution,
+    });
 
     /**
      * Pipeline enabled and GitHub access token provided
      * 
      */ 
-    else {
+    if (props?.accessTokenSecretArn) {
       // check for sourceProps
       if (!props.sourceProps?.owner || !props.sourceProps?.repo || !props.sourceProps?.branchOrRef) {
         throw new Error('Missing sourceProps: Github owner, repo and branch/ref required.');
