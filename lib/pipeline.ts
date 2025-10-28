@@ -234,8 +234,6 @@ export class PipelineConstruct extends Construct {
             install: props.buildProps?.customRuntime ? {
                 commands: [
                   'echo "Starting build with custom runtime"',
-                  'source /etc/profile',
-                  `fnm use ${props.buildProps?.runtime_version || '24'}`,
                   ...(this.rootDir ? [`cd ${this.rootDir}`] : []),
                   'echo "Installing dependencies..."',
                   props.buildProps?.installcmd || 'npm install',
