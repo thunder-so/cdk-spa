@@ -1,36 +1,42 @@
-FROM node:24-alpine
+# Use the provided runtime version to fetch base image
+# https://gallery.ecr.aws/docker/library/node
+ARG NODE_VERSION
+FROM public.ecr.aws/docker/library/node:${NODE_VERSION}-alpine
 
-RUN apk add --no-cache bash curl
-RUN apk add fnm --repository=http://dl-cdn.alpinelinux.org/alpine/edge/testing/
+# Add repos 
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories && \
+    echo "http://dl-cdn.alpinelinux.org/alpine/edge/community/" >> /etc/apk/repositories && \
+    apk update
 
-# Setup fnm environment and install Node.js versions
-RUN echo 'eval "$(fnm env --shell=bash --use-on-cd)"' >> /etc/profile && \
-    bash -c "source /etc/profile && fnm install 20 && fnm install 22 && fnm install 24 && fnm default 24"
-
-# Set environment
-ENV ENV=/etc/profile
-ENV SHELL=/bin/bash
-
-# Install pnpm
-RUN touch /etc/profile && curl -fsSL https://get.pnpm.io/install.sh | bash
+# Install deps
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    zip \
+    python3 \
+    ca-certificates 
 
 # Install Yarn (via corepack, included with Node)
 RUN corepack enable && \
     corepack prepare yarn@stable --activate
 
+ENV SHELL=/bin/bash
+
+# Install pnpm
+RUN curl -fsSL https://get.pnpm.io/install.sh | bash
+
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
 
-# Update PATH for pnpm and bun
-ENV PATH="/root/.local/share/pnpm:/root/.bun/bin:$PATH"
-RUN echo 'export PATH="/root/.bun/bin:$PATH"' >> /etc/profile
+# Verify everything works
+RUN node --version && \
+    npm --version && \
+    corepack --version && \
+    pnpm --version && \
+    yarn --version
 
-# Verify installations
-RUN node -v && \
-    npm -v && \
-    pnpm -v && \
-    yarn -v && \
-    bun -v
+RUN rm -rf /var/cache/apk/*
 
-# Set default command
-CMD ["/bin/bash"]
+# Default command
+CMD ["bash", "-c"]

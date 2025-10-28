@@ -62,6 +62,9 @@ export class PipelineConstruct extends Construct {
       const dockerAsset = new DockerImageAsset(this, 'RuntimeImage', {
         directory: path.dirname(props.buildProps.customRuntime),
         file: path.basename(props.buildProps.customRuntime),
+        buildArgs: {
+          NODE_VERSION: props.buildProps?.runtime_version as string || '24'
+        }
       });
       this.customRuntimeImageUri = dockerAsset.imageUri;
     }
