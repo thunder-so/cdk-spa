@@ -17,14 +17,12 @@ RUN apk add --no-cache \
     python3 \
     ca-certificates 
 
-# Install Yarn (via corepack, included with Node)
+# Install Yarn and PNPM (via corepack, included with Node)
 RUN corepack enable && \
-    corepack prepare yarn@stable --activate
+    corepack prepare yarn@stable --activate && \
+    corepack prepare pnpm@latest --activate
 
 ENV SHELL=/bin/bash
-
-# Install pnpm
-RUN curl -fsSL https://get.pnpm.io/install.sh | bash
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
@@ -32,7 +30,6 @@ RUN curl -fsSL https://bun.sh/install | bash
 # Verify everything works
 RUN node --version && \
     npm --version && \
-    corepack --version && \
     pnpm --version && \
     yarn --version
 
